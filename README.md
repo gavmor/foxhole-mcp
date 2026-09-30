@@ -43,7 +43,7 @@ From this directory:
 uv sync
 ```
 
-### 3. Run Quality Checks (`ruff` + `pytest`)
+### 3. Run Quality Checks (`ruff` + `ty` + `pytest`)
 
 ```bash
 # Check code style & lints
@@ -52,8 +52,24 @@ uv run ruff check
 # Format check
 uv run ruff format --check
 
+# Type check using Astral's ty
+uv run ty check
+
 # Run test suite
 uv run pytest
+```
+
+### 4. Git Hooks via Lefthook
+
+Hooks are configured in [lefthook.yml](file:///home/user/Documents/foxhole/lefthook.yml):
+- **Pre-commit**: Auto-fixes lints with `ruff check --fix`, formats staged files with `ruff format`, runs `ty check`, and runs `pytest`.
+- **Pre-push**: Runs full linting, format verification, `ty` type checking, and the complete test suite in parallel.
+
+Install and test hooks:
+```bash
+lefthook install
+lefthook run pre-commit
+lefthook run pre-push
 ```
 
 ---
