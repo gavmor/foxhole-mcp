@@ -1,6 +1,6 @@
-"""Foxhole MediaWiki MCP Server & structured game data package."""
+"""Foxhole MediaWiki MCP Server & War API telemetry package."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from foxhole.client import FoxholeWikiClient
 from foxhole.models import (
@@ -13,16 +13,46 @@ from foxhole.models import (
     VehicleStats,
 )
 from foxhole.server import server
+from foxhole.warapi import (
+    DEFAULT_SHARD,
+    ICON_CATEGORIES,
+    MAP_ICON_NAMES,
+    SHARDS,
+    GlobalCasualties,
+    MapData,
+    MapFlags,
+    MapItem,
+    MapTextItem,
+    VictoryTownStatus,
+    WarApiClient,
+    WarReport,
+    WarState,
+    get_icon_name,
+)
 
 __all__ = [
+    "DEFAULT_SHARD",
+    "ICON_CATEGORIES",
+    "MAP_ICON_NAMES",
+    "SHARDS",
     "Armament",
     "FoxholeWikiClient",
+    "GlobalCasualties",
     "ItemStats",
+    "MapData",
+    "MapFlags",
+    "MapItem",
+    "MapTextItem",
     "PageContent",
     "ProductionRecipe",
     "SearchResult",
     "StructureStats",
     "VehicleStats",
+    "VictoryTownStatus",
+    "WarApiClient",
+    "WarReport",
+    "WarState",
     "__version__",
+    "get_icon_name",
     "server",
 ]

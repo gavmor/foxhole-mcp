@@ -1,4 +1,4 @@
-"""Command-line interface for Foxhole MCP Server and wiki tools."""
+"""Command-line interface for Foxhole MCP Server, MediaWiki tools, and War API."""
 
 import argparse
 import asyncio
@@ -8,10 +8,16 @@ import sys
 from foxhole.client import FoxholeWikiClient
 from foxhole.parser import parse_item, parse_page_content, parse_structure, parse_vehicle
 from foxhole.server import _resolve_title, server
+from foxhole.warapi import DEFAULT_SHARD, WarApiClient
 
 
 def _format_dict(d: dict) -> str:
     return json.dumps(d, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Wiki CLI Actions
+# ---------------------------------------------------------------------------
 
 
 async def run_search(query: str, limit: int = 5) -> None:
@@ -95,11 +101,122 @@ async def run_page(title: str) -> None:
         await client.close()
 
 
+# ---------------------------------------------------------------------------
+# War API CLI Actions
+# ---------------------------------------------------------------------------
+
+
+async def run_war_status(shard: str = DEFAULT_SHARD) -> None:
+    war_client = WarApiClient()
+    try:
+        state = await war_client.get_war_state(shard=shard)
+        if not state:
+            print(f"Failed to fetch war state from shard '{shard}'.")
+            return
+        print(
+            _format_dict(
+                {
+                    "shard": shard,
+                    "war_number": state.war_number,
+                    "status": state.status_display,
+                    "winner": state.winner,
+                    "started_at": state.start_datetime,
+                    "required_victory_towns": state.required_victory_towns,
+                }
+            )
+        )
+    finally:
+        await war_client.close()
+
+
+async def run_casualties(map_name: str | None = None, shard: str = DEFAULT_SHARD) -> None:
+    war_client = WarApiClient()
+    try:
+        if map_name:
+            report = await war_client.get_war_report(map_name, shard=shard)
+            if not report:
+                print(f"Could not find report for map '{map_name}'.")
+                return
+            print(_format_dict(report.model_dump()))
+        else:
+            print(f"Aggregating casualties across all active fronts on '{shard}'...")
+            global_stats = await war_client.get_global_casualties(shard=shard)
+            if not global_stats:
+                print(f"Could not compute global casualties for '{shard}'.")
+                return
+            print(_format_dict(global_stats.model_dump()))
+    finally:
+        await war_client.close()
+
+
+async def run_maps(shard: str = DEFAULT_SHARD) -> None:
+    war_client = WarApiClient()
+    try:
+        maps = await war_client.get_maps(shard=shard)
+        print(f"--- Active Maps on '{shard}' ({len(maps)} total) ---")
+        for m in sorted(maps):
+            print(f"  • {m}")
+    finally:
+        await war_client.close()
+
+
+async def run_intel(
+    map_name: str,
+    category: str | None = None,
+    shard: str = DEFAULT_SHARD,
+) -> None:
+    war_client = WarApiClient()
+    try:
+        dyn = await war_client.get_dynamic_map_data(map_name, shard=shard)
+        st = await war_client.get_static_map_data(map_name, shard=shard)
+        if not dyn and not st:
+            print(f"Could not retrieve telemetry for map '{map_name}'.")
+            return
+
+        items = dyn.map_items if dyn else []
+        print(f"\n--- Tactical Intel: {map_name} ({shard}) ---")
+        print(f"Tracked dynamic items: {len(items)}")
+
+        vp_items = [i for i in items if i.is_victory_base]
+        if vp_items:
+            print("\nVictory Towns:")
+            for vp in vp_items:
+                status = "SCORCHED" if vp.is_scorched else vp.team_id
+                print(f"  ★ {vp.icon_name} -> {status}")
+
+        major_locs = (
+            [t.text for t in st.map_text_items if t.map_marker_type == "Major"] if st else []
+        )
+        if major_locs:
+            print("\nMajor Locations:")
+            print(f"  {', '.join(major_locs)}")
+    finally:
+        await war_client.close()
+
+
+async def run_victory(shard: str = DEFAULT_SHARD) -> None:
+    war_client = WarApiClient()
+    try:
+        print(f"Calculating victory town control across all maps for '{shard}'...")
+        vt_status = await war_client.get_victory_town_status(shard=shard)
+        if not vt_status:
+            print(f"Failed to calculate victory status for shard '{shard}'.")
+            return
+        print(_format_dict(vt_status.model_dump()))
+    finally:
+        await war_client.close()
+
+
+# ---------------------------------------------------------------------------
+# Main CLI Dispatcher
+# ---------------------------------------------------------------------------
+
+
 def main() -> None:
     """CLI entrypoint."""
     parser = argparse.ArgumentParser(
         prog="foxhole",
-        description="Foxhole MediaWiki MCP Server & structured CLI reference",
+        description="Foxhole MediaWiki MCP Server & War API telemetry tools",
     )
     subparsers = parser.add_subparsers(dest="command", help="Subcommand to run")
 
@@ -118,26 +235,45 @@ def main() -> None:
         help="Port for SSE transport (default: 8000)",
     )
 
-    # Search command
+    # Wiki Commands
     search_parser = subparsers.add_parser("search", help="Search the Foxhole wiki")
     search_parser.add_argument("query", help="Search query string")
     search_parser.add_argument("-n", "--limit", type=int, default=5, help="Number of results")
 
-    # Vehicle lookup
     veh_parser = subparsers.add_parser("vehicle", help="Look up vehicle specifications")
     veh_parser.add_argument("name", help="Vehicle name or variant")
 
-    # Item lookup
     item_parser = subparsers.add_parser("item", help="Look up item or weapon specifications")
     item_parser.add_argument("name", help="Item name")
 
-    # Structure lookup
     struct_parser = subparsers.add_parser("structure", help="Look up structure specifications")
     struct_parser.add_argument("name", help="Structure name")
 
-    # Page lookup
     page_parser = subparsers.add_parser("page", help="Get clean text and overview of a wiki page")
     page_parser.add_argument("title", help="Page title")
+
+    # War API Commands
+    war_parser = subparsers.add_parser("war", help="Get current World Conquest status")
+    war_parser.add_argument("--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)")
+
+    cas_parser = subparsers.add_parser("casualties", help="Get casualty reports")
+    cas_parser.add_argument("-m", "--map", dest="map_name", help="Hex map name (default: all)")
+    cas_parser.add_argument("--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)")
+
+    maps_parser = subparsers.add_parser("maps", help="List active World Conquest hexes")
+    maps_parser.add_argument(
+        "--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)"
+    )
+
+    intel_parser = subparsers.add_parser("intel", help="Get tactical map telemetry")
+    intel_parser.add_argument("map_name", help="Hex map name")
+    intel_parser.add_argument("-c", "--category", help="Category filter")
+    intel_parser.add_argument(
+        "--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)"
+    )
+
+    vic_parser = subparsers.add_parser("victory", help="Get victory town scores and requirements")
+    vic_parser.add_argument("--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)")
 
     args = parser.parse_args()
 
@@ -157,6 +293,16 @@ def main() -> None:
         asyncio.run(run_structure(args.name))
     elif args.command == "page":
         asyncio.run(run_page(args.title))
+    elif args.command == "war":
+        asyncio.run(run_war_status(args.shard))
+    elif args.command == "casualties":
+        asyncio.run(run_casualties(args.map_name, args.shard))
+    elif args.command == "maps":
+        asyncio.run(run_maps(args.shard))
+    elif args.command == "intel":
+        asyncio.run(run_intel(args.map_name, args.category, args.shard))
+    elif args.command == "victory":
+        asyncio.run(run_victory(args.shard))
     else:
         parser.print_help()
         sys.exit(1)

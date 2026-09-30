@@ -109,7 +109,7 @@ uv run foxhole mcp --transport sse --port 8000
 
 ## MCP Tools & Prompts Exposed
 
-### Tools
+### MediaWiki Tools
 1. `search_foxhole_wiki(query: str, limit: int = 5)`: Search for articles across `foxhole.wiki.gg`.
 2. `get_vehicle_stats(vehicle_name: str)`: Return structured specifications, subsystem disable chances, and armaments.
 3. `get_item_stats(item_name: str)`: Return weapon stats, damage types, crate sizes, and ammunition types.
@@ -117,17 +117,46 @@ uv run foxhole mcp --transport sse --port 8000
 5. `get_production_cost(name: str)`: Extract exact manufacturing requirements, cycle times, and facility sources.
 6. `get_page_overview(title: str)`: Return a clean text overview of any page without wiki markup.
 
+### War API Telemetry Tools ([`clapfoot/warapi`](https://github.com/clapfoot/warapi))
+1. `get_war_status(shard: str = "live-1")`: Query live World Conquest status, war number, active winner, and victory town requirements.
+2. `get_war_casualties(map_name: str | None = None, shard: str = "live-1")`: Query live player casualties and enlistments for a specific hex, or aggregated globally across all 53 active fronts.
+3. `get_active_maps(shard: str = "live-1")`: List all active World Conquest map hexes.
+4. `get_map_intel(map_name: str, filter_category: str | None = None, shard: str = "live-1")`: Retrieve base control, victory points, logistics assets, and resource fields for any hex.
+5. `get_victory_town_status(shard: str = "live-1")`: Compute global victory town scores (Wardens vs Colonials) and scorched town deductions.
+
 ### Prompts
-1. `combat_intel(vehicle_or_weapon: str)`: Prompts the model for an in-depth combat evaluation, penetration analysis, and counter-tactics.
-2. `logistics_plan(item_name: str, requested_amount: int)`: Prompts the model to compute crate counts, material costs, and delivery plans.
+1. `combat_intel(vehicle_or_weapon: str)`: In-depth combat evaluation, penetration analysis, and counter-tactics.
+2. `logistics_plan(item_name: str, requested_amount: int)`: Compute crate counts, material costs, and delivery plans.
+3. `strategic_war_overview(shard: str = "live-1")`: Synthesize high-level war situation report across all fronts.
+4. `frontline_intel(map_name: str, shard: str = "live-1")`: Generate operational sector briefing for a specific frontline hex.
 
 ---
 
 ## CLI Usage
 
-You can also query the wiki directly from your command line:
+You can query both the wiki and live game telemetry directly from the command line:
 
 ```bash
+# --- War API Live Telemetry ---
+# Check current World Conquest status
+uv run foxhole war
+
+# Check casualties for a specific hex
+uv run foxhole casualties --map DeadLandsHex
+
+# Aggregate casualties across all active fronts
+uv run foxhole casualties
+
+# List all active hexes
+uv run foxhole maps
+
+# Tactical intelligence for a hex
+uv run foxhole intel DeadLandsHex
+
+# Victory town score
+uv run foxhole victory
+
+# --- MediaWiki Game Data ---
 # Search wiki
 uv run foxhole search "Storm Cannon"
 
@@ -153,6 +182,7 @@ uv run foxhole page "Artillery"
 ```text
 foxhole/
 ├── pyproject.toml         # uv project configuration, dependencies & ruff rules
+├── lefthook.yml           # Git hooks (ruff, ty, pytest)
 ├── mcp_config.json        # MCP server client configuration
 ├── README.md              # Documentation
 ├── src/
@@ -161,9 +191,15 @@ foxhole/
 │       ├── client.py      # Async MediaWiki client with TTL caching & user-agent
 │       ├── models.py      # Pydantic data schemas (Vehicle, Item, Structure, Recipe)
 │       ├── parser.py      # wikitextparser template & structure extractor
-│       ├── server.py      # FastMCP / MCPServer definitions
-│       └── cli.py         # Command-line interface
+│       ├── server.py      # FastMCP server exposing Wiki tools & War API telemetry
+│       ├── cli.py         # Command-line interface for Wiki & War API
+│       └── warapi/        # clapfoot/warapi integration
+│           ├── __init__.py
+│           ├── client.py  # Async War API client with ETag support
+│           ├── constants.py# Shards, Icon IDs (5..92), Map Flags
+│           └── models.py  # WarState, WarReport, MapItem, GlobalCasualties
 └── tests/
     ├── test_parser.py     # Parser unit tests
-    └── test_server.py     # MCP tools and live integration tests
+    ├── test_server.py     # MCP tools integration tests
+    └── test_warapi.py     # War API unit & integration tests
 ```
