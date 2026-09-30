@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_API_URL = "https://foxhole.wiki.gg/api.php"
 DEFAULT_USER_AGENT = os.getenv(
     "FOXHOLE_USER_AGENT",
-    "FoxholeMCP/0.1.0 (+https://github.com/foxhole/foxhole-mcp; automated-game-assistant)",
+    "FoxholeMCP/0.1.0 (+https://github.com/gavmor/foxhole-mcp; automated-game-assistant)",
 )
 
 
