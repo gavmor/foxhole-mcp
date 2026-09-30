@@ -1,0 +1,56 @@
+[project]
+name = "foxhole"
+version = "0.1.0"
+description = "Custom Foxhole MediaWiki MCP Server & CLI with structured game data parsing"
+readme = "README.md"
+authors = [
+    { name = "Gavin Morgan", email = "hello@gavmor.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp>=1.0.0",
+    "pydantic>=2.10.0",
+    "wikitextparser>=2.0.0",
+]
+
+[project.scripts]
+foxhole = "foxhole.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.9.0",
+    "ty>=0.0.84",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "UP",     # pyupgrade
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "E501",   # line-too-long handled by formatter
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "fastmcp-client-cli": {
+      "source": "PrefectHQ/fastmcp",
+      "ref": "main",
+      "sourceType": "github",
+      "skillPath": "skills/fastmcp-client-cli/SKILL.md",
+      "computedHash": "ef06a047ab5fd88d52aa6972b274b146638ff7078cfc1b4e54aa5450212c7b32"
+    }
+  }
+}
