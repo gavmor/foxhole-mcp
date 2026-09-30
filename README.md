@@ -91,7 +91,7 @@ To connect this server to your MCP client (Claude Desktop, Claude Code, Antigrav
         "mcp"
       ],
       "env": {
-        "FOXHOLE_USER_AGENT": "FoxholeMCP/0.1.0 (+https://github.com/foxhole/foxhole-mcp; game-assistant)"
+        "FOXHOLE_USER_AGENT": "FoxholeMCP/0.1.0 (+https://github.com/gavmor/foxhole-mcp; game-assistant)"
       }
     }
   }
