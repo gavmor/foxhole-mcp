@@ -1,66 +1,51 @@
 """Foxhole MCP Server orchestrator combining MediaWiki tools, War API telemetry, and factory optimization."""
 
 import logging
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 from mcp.server.mcpserver import MCPServer
 
-from foxhole.prompts import (
-    bill_of_materials,
-    combat_intel,
-    frontline_intel,
-    logistics_plan,
-    production_planner,
-    register_prompts,
-    strategic_war_overview,
-)
+from foxhole.prompts import register_prompts
 from foxhole.telemetry import apply_telemetry_mode, setup_telemetry
-from foxhole.tools.dispatches import (
-    DispatchesTools,
+from foxhole.tools import (
+    DEFAULT_TOOL_PROVIDERS,
     default_dispatches_tools,
-    get_flash_dispatch,
-    get_propaganda_wire,
-)
-from foxhole.tools.production import (
-    calculate_required_resources,
-    default_fetch_recipes,
-    plan_production,
-    register_production_tools,
-)
-from foxhole.tools.warapi import (
-    WarApiTools,
+    default_production_tools,
     default_war_tools,
-    get_active_maps,
-    get_map_intel,
-    get_victory_town_status,
-    get_war_casualties,
-    get_war_status,
-)
-from foxhole.tools.wiki import (
-    WikiTools,
     default_wiki_tools,
-    edit_wiki_page,
-    get_item_stats,
-    get_page_overview,
-    get_production_cost,
-    get_structure_stats,
-    get_vehicle_stats,
-    search_foxhole_wiki,
 )
 
 logger = logging.getLogger(__name__)
+
+
+class ServerExtension(Protocol):
+    """Protocol for components registering tools, prompts, or capabilities with an MCPServer."""
+
+    def register(self, server: MCPServer) -> None: ...
+
+
+# Default registered extensions (all tool providers + prompt registry)
+DEFAULT_EXTENSIONS: tuple[Any, ...] = (
+    *DEFAULT_TOOL_PROVIDERS,
+    register_prompts,
+)
 
 
 def create_server(
     name: str = "foxhole",
     description: str = "Foxhole MCP server combining MediaWiki data with live War API telemetry",
     version: str = "0.2.0",
-    wiki_tools: WikiTools | None = None,
-    war_tools: WarApiTools | None = None,
-    dispatches_tools: DispatchesTools | None = None,
+    extensions: Sequence[Any] | None = None,
     telemetry_mode: str | None = None,
     telemetry: bool | None = None,
+    **legacy_kwargs: Any,
 ) -> MCPServer:
-    """Create and configure a Foxhole MCPServer instance with all tools and prompts."""
+    """Create and configure a Foxhole MCPServer instance with modular extensions.
+
+    Extensions can be objects implementing `.register(server: MCPServer)` or callables
+    taking `(server: MCPServer)`.
+    """
     setup_telemetry(service_name=name, telemetry_mode=telemetry_mode, enabled=telemetry)
 
     mcp_server = MCPServer(
@@ -69,11 +54,24 @@ def create_server(
         version=version,
     )
 
-    (wiki_tools or default_wiki_tools).register(mcp_server)
-    (war_tools or default_war_tools).register(mcp_server)
-    (dispatches_tools or default_dispatches_tools).register(mcp_server)
-    register_production_tools(mcp_server)
-    register_prompts(mcp_server)
+    if extensions is not None:
+        active_extensions = list(extensions)
+    else:
+        # Build active extensions, allowing legacy kwargs overrides if specified
+        wiki = legacy_kwargs.get("wiki_tools", default_wiki_tools)
+        war = legacy_kwargs.get("war_tools", default_war_tools)
+        dispatches = legacy_kwargs.get("dispatches_tools", default_dispatches_tools)
+        production = legacy_kwargs.get("production_tools", default_production_tools)
+        prompts = legacy_kwargs.get("prompt_registry", register_prompts)
+        active_extensions = [wiki, war, dispatches, production, prompts]
+
+    for ext in active_extensions:
+        if hasattr(ext, "register") and callable(ext.register):
+            ext.register(mcp_server)
+        elif callable(ext):
+            ext(mcp_server)
+        else:
+            raise TypeError(f"Extension {ext!r} must have a .register() method or be callable")
 
     apply_telemetry_mode(mcp_server, mode=telemetry_mode, enabled=telemetry)
 
@@ -87,36 +85,48 @@ server = create_server()
 client = default_wiki_tools.client
 war_client = default_war_tools.war_client
 _resolve_title = default_wiki_tools.resolve_title
-_fetch_recipes = default_fetch_recipes
+_fetch_recipes = default_production_tools.fetch_fn
 
-__all__ = [
-    "_fetch_recipes",
-    "_resolve_title",
-    "bill_of_materials",
-    "calculate_required_resources",
-    "client",
-    "combat_intel",
-    "create_server",
-    "edit_wiki_page",
-    "frontline_intel",
-    "get_active_maps",
-    "get_flash_dispatch",
-    "get_item_stats",
-    "get_map_intel",
-    "get_page_overview",
-    "get_production_cost",
-    "get_propaganda_wire",
-    "get_structure_stats",
-    "get_vehicle_stats",
-    "get_victory_town_status",
-    "get_war_casualties",
-    "get_war_status",
-    "logistics_plan",
-    "plan_production",
-    "production_planner",
-    "search_foxhole_wiki",
-    "server",
-    "setup_telemetry",
-    "strategic_war_overview",
-    "war_client",
-]
+# ---------------------------------------------------------------------------
+# Dynamic Backward Compatibility (PEP 562)
+# Avoids maintaining a static re-export list of 30+ functions from child modules.
+# ---------------------------------------------------------------------------
+_DELEGATE_MODULES = ("foxhole.tools", "foxhole.prompts")
+
+
+def __getattr__(name: str) -> Any:
+    # Direct alias fast-paths
+    if name == "_fetch_recipes":
+        return default_production_tools.fetch_fn
+    if name == "client":
+        return default_wiki_tools.client
+    if name == "war_client":
+        return default_war_tools.war_client
+    if name == "_resolve_title":
+        return default_wiki_tools.resolve_title
+
+    import importlib
+
+    for mod_name in _DELEGATE_MODULES:
+        try:
+            mod = importlib.import_module(mod_name)
+            if hasattr(mod, name):
+                return getattr(mod, name)
+        except (ImportError, AttributeError):
+            continue
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    attrs = set(globals().keys())
+    attrs.update(["_fetch_recipes", "client", "war_client", "_resolve_title"])
+    import importlib
+
+    for mod_name in _DELEGATE_MODULES:
+        try:
+            mod = importlib.import_module(mod_name)
+            attrs.update(dir(mod))
+        except ImportError:
+            pass
+    return sorted(attrs)

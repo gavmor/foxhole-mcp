@@ -7,8 +7,10 @@ from foxhole.tools.dispatches import (
     get_propaganda_wire,
 )
 from foxhole.tools.production import (
+    ProductionTools,
     calculate_required_resources,
     default_fetch_recipes,
+    default_production_tools,
     plan_production,
     register_production_tools,
 )
@@ -34,13 +36,29 @@ from foxhole.tools.wiki import (
     search_foxhole_wiki,
 )
 
+# Standard tuple of default tool providers implementing the .register(server) protocol
+DEFAULT_TOOL_PROVIDERS: tuple[
+    WikiTools,
+    WarApiTools,
+    DispatchesTools,
+    ProductionTools,
+] = (
+    default_wiki_tools,
+    default_war_tools,
+    default_dispatches_tools,
+    default_production_tools,
+)
+
 __all__ = [
+    "DEFAULT_TOOL_PROVIDERS",
     "DispatchesTools",
+    "ProductionTools",
     "WarApiTools",
     "WikiTools",
     "calculate_required_resources",
     "default_dispatches_tools",
     "default_fetch_recipes",
+    "default_production_tools",
     "default_war_tools",
     "default_wiki_tools",
     "edit_wiki_page",

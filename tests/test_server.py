@@ -128,3 +128,57 @@ async def test_create_server_custom_components():
     parsed_item = json.loads(res_item)
     assert parsed_item["name"] == "CustomItem"
     assert parsed_item["ammo"] == "9mm"
+
+
+@pytest.mark.asyncio
+async def test_create_server_modular_extensions():
+    """Verify that create_server accepts arbitrary modular extensions conforming to ServerExtension protocol."""
+    from mcp.server.mcpserver import MCPServer
+
+    from foxhole.server import create_server
+
+    class CustomExtension:
+        def register(self, s: MCPServer) -> None:
+            def dummy_tool(x: int) -> int:
+                return x * 2
+
+            s.add_tool(dummy_tool)
+
+    def callable_extension(s: MCPServer) -> None:
+        def another_tool(y: str) -> str:
+            return y.upper()
+
+        s.add_tool(another_tool)
+
+    custom_server = create_server(extensions=[CustomExtension(), callable_extension])
+    tools = await custom_server.list_tools()
+    tool_names = [t.name for t in tools]
+    assert "dummy_tool" in tool_names
+    assert "another_tool" in tool_names
+    # Standard tools are not loaded when custom extensions list is explicitly provided
+    assert "search_foxhole_wiki" not in tool_names
+
+
+def test_server_dynamic_attribute_delegation():
+    """Verify PEP 562 dynamic attribute lookup on foxhole.server without hardcoded re-exports."""
+    import importlib
+
+    server_mod = importlib.import_module("foxhole.server")
+
+    # Tool functions dynamically resolved from foxhole.tools
+    assert callable(server_mod.search_foxhole_wiki)
+    assert callable(server_mod.get_vehicle_stats)
+    assert callable(server_mod.plan_production)
+    assert callable(server_mod.get_flash_dispatch)
+
+    # Prompt functions dynamically resolved from foxhole.prompts
+    assert callable(server_mod.combat_intel)
+    assert callable(server_mod.logistics_plan)
+
+    # Dir includes dynamically resolved attributes
+    dir_entries = dir(server_mod)
+    assert "search_foxhole_wiki" in dir_entries
+    assert "combat_intel" in dir_entries
+
+    with pytest.raises(AttributeError):
+        _ = server_mod.non_existent_symbol

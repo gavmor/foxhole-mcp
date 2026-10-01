@@ -2,6 +2,7 @@
 
 import json
 import logging
+from collections.abc import Callable
 
 from mcp.server.mcpserver import MCPServer
 
@@ -79,59 +80,86 @@ def calculate_required_resources(
         return json.dumps({"error": f"Internal error solving production demand: {e}"}, indent=2)
 
 
+class ProductionTools:
+    """Production and bill of materials tool provider."""
+
+    def __init__(self, fetch_fn: Callable = default_fetch_recipes):
+        self.fetch_fn = fetch_fn
+
+    def register(self, server: MCPServer) -> None:
+        """Register production planning and BOM tools with MCPServer."""
+        server.add_tool(calculate_required_resources)
+        server.add_tool(self.plan_production)
+
+    async def plan_production(
+        self,
+        target: str,
+        quantity: float = 1,
+        recipe_overrides: dict[str, dict[str, float]] | None = None,
+        recipe_choice: dict[str, int] | None = None,
+    ) -> str:
+        """Compute the full bill of materials to produce any Foxhole vehicle, item, or structure.
+
+        Recursively pulls recipes from foxhole.wiki.gg, rolls up totals down to raw resources
+        (Salvage, Components, Sulfur, Coal, Oil, ...) with integer batch rounding, and reports
+        production steps, facility load, and alternative recipes. Feedback loops (e.g. mines
+        burning fuel refined from their own output) are solved with a Leontief fallback.
+
+        Use for questions like "how many bmats/salvage for 5 Dunnes?" or "full cost of 20 40mm".
+
+        Args:
+            target: Item name or alias (e.g. 'Dunne Transport', '40mm', 'Chieftain')
+            quantity: Number of units to produce (default: 1)
+            recipe_overrides: Replace recipes: {item: {input: qty per 1 output}}. Use {} to treat an
+                item as raw (e.g. {'Basic Materials': {}}), or override a raw resource to model
+                extraction (e.g. {'Salvage': {'Diesel': 0.111}}).
+            recipe_choice: Pick an alternative wiki recipe by index: {item: index}. Indices are
+                listed in the response's alternative_recipes.
+        """
+        import sys
+
+        server_mod = sys.modules.get("foxhole.server")
+        fetch_fn = (
+            getattr(server_mod, "_fetch_recipes", self.fetch_fn) if server_mod else self.fetch_fn
+        )
+        try:
+            with tracer.start_as_current_span(
+                "plan_production.solve",
+                attributes={
+                    "foxhole.target": target,
+                    "foxhole.quantity": quantity,
+                },
+            ):
+                result = await _plan_production(
+                    target,
+                    quantity,
+                    fetch_fn,
+                    recipe_overrides=recipe_overrides,
+                    recipe_choice=recipe_choice,
+                )
+                return json.dumps(result, indent=2)
+        except ValueError as e:
+            return json.dumps({"error": str(e)}, indent=2)
+
+
+default_production_tools = ProductionTools()
+
+
 async def plan_production(
     target: str,
     quantity: float = 1,
     recipe_overrides: dict[str, dict[str, float]] | None = None,
     recipe_choice: dict[str, int] | None = None,
 ) -> str:
-    """Compute the full bill of materials to produce any Foxhole vehicle, item, or structure.
-
-    Recursively pulls recipes from foxhole.wiki.gg, rolls up totals down to raw resources
-    (Salvage, Components, Sulfur, Coal, Oil, ...) with integer batch rounding, and reports
-    production steps, facility load, and alternative recipes. Feedback loops (e.g. mines
-    burning fuel refined from their own output) are solved with a Leontief fallback.
-
-    Use for questions like "how many bmats/salvage for 5 Dunnes?" or "full cost of 20 40mm".
-
-    Args:
-        target: Item name or alias (e.g. 'Dunne Transport', '40mm', 'Chieftain')
-        quantity: Number of units to produce (default: 1)
-        recipe_overrides: Replace recipes: {item: {input: qty per 1 output}}. Use {} to treat an
-            item as raw (e.g. {'Basic Materials': {}}), or override a raw resource to model
-            extraction (e.g. {'Salvage': {'Diesel': 0.111}}).
-        recipe_choice: Pick an alternative wiki recipe by index: {item: index}. Indices are
-            listed in the response's alternative_recipes.
-    """
-    import sys
-
-    server_mod = sys.modules.get("foxhole.server")
-    fetch_fn = (
-        getattr(server_mod, "_fetch_recipes", default_fetch_recipes)
-        if server_mod
-        else default_fetch_recipes
+    """Module-level convenience wrapper for default_production_tools.plan_production."""
+    return await default_production_tools.plan_production(
+        target=target,
+        quantity=quantity,
+        recipe_overrides=recipe_overrides,
+        recipe_choice=recipe_choice,
     )
-    try:
-        with tracer.start_as_current_span(
-            "plan_production.solve",
-            attributes={
-                "foxhole.target": target,
-                "foxhole.quantity": quantity,
-            },
-        ):
-            result = await _plan_production(
-                target,
-                quantity,
-                fetch_fn,
-                recipe_overrides=recipe_overrides,
-                recipe_choice=recipe_choice,
-            )
-            return json.dumps(result, indent=2)
-    except ValueError as e:
-        return json.dumps({"error": str(e)}, indent=2)
 
 
 def register_production_tools(server: MCPServer) -> None:
     """Register production planning and BOM tools with MCPServer."""
-    server.add_tool(calculate_required_resources)
-    server.add_tool(plan_production)
+    default_production_tools.register(server)
