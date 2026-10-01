@@ -1,7 +1,6 @@
 """Unit tests for the production planner (BOM rollup with Leontief fallback)."""
 
 import importlib
-import json
 
 import pytest
 
@@ -135,7 +134,7 @@ async def test_mcp_tool_returns_error_json(monkeypatch):
     server = importlib.import_module("foxhole.server")
 
     monkeypatch.setattr(server, "_fetch_recipes", fake_fetch)
-    data = json.loads(await server.plan_production("Dunne Transport", 0))
+    data = await server.plan_production("Dunne Transport", 0)
     assert "error" in data
-    data = json.loads(await server.plan_production("dunne", 2))
+    data = await server.plan_production("dunne", 2)
     assert data["raw_materials"] == {"Salvage": 400.0}

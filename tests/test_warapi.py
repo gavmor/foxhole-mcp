@@ -1,7 +1,5 @@
 """Unit and integration tests for Foxhole War API integration."""
 
-import json
-
 import pytest
 
 from foxhole.server import (
@@ -109,42 +107,37 @@ def test_war_report_model():
 
 @pytest.mark.asyncio
 async def test_get_war_status_tool():
-    res_str = await get_war_status(shard="live-1")
-    data = json.loads(res_str)
-    assert "war_number" in data
-    assert "status" in data
-    assert data["shard"] == "live-1"
+    res = await get_war_status(shard="live-1")
+    assert "war_number" in res
+    assert "status" in res
+    assert res["shard"] == "live-1"
 
 
 @pytest.mark.asyncio
 async def test_get_active_maps_tool():
-    res_str = await get_active_maps(shard="live-1")
-    data = json.loads(res_str)
-    assert data["total_maps"] > 0
-    assert "DeadLandsHex" in data["maps"]
+    res = await get_active_maps(shard="live-1")
+    assert res["total_maps"] > 0
+    assert "DeadLandsHex" in res["maps"]
 
 
 @pytest.mark.asyncio
 async def test_get_war_casualties_tool():
-    res_str = await get_war_casualties(map_name="DeadLandsHex", shard="live-1")
-    data = json.loads(res_str)
-    assert data["map_name"] == "DeadLandsHex"
-    assert "colonial_casualties" in data
-    assert "warden_casualties" in data
+    res = await get_war_casualties(map_name="DeadLandsHex", shard="live-1")
+    assert res["map_name"] == "DeadLandsHex"
+    assert "colonial_casualties" in res
+    assert "warden_casualties" in res
 
 
 @pytest.mark.asyncio
 async def test_get_map_intel_tool():
-    res_str = await get_map_intel("DeadLandsHex", shard="live-1")
-    data = json.loads(res_str)
-    assert data["map_name"] == "DeadLandsHex"
-    assert "major_locations" in data
-    assert "Abandoned Ward" in data["major_locations"]
+    res = await get_map_intel("DeadLandsHex", shard="live-1")
+    assert res["map_name"] == "DeadLandsHex"
+    assert "major_locations" in res
+    assert "Abandoned Ward" in res["major_locations"]
 
 
 @pytest.mark.asyncio
 async def test_get_victory_town_status_tool():
-    res_str = await get_victory_town_status(shard="live-1")
-    data = json.loads(res_str)
-    assert "required_to_win" in data
-    assert data["required_to_win"] > 0
+    res = await get_victory_town_status(shard="live-1")
+    assert "required_to_win" in res
+    assert res["required_to_win"] > 0

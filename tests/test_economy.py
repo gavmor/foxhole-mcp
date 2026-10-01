@@ -1,7 +1,5 @@
 """Unit tests for the Curried Leontief Economy Solver and BOM calculations."""
 
-import json
-
 import numpy as np
 import pytest
 
@@ -129,8 +127,7 @@ def test_machine_count_calculations():
 
 def test_server_calculate_required_resources_tool():
     """Test MCP server tool invocation for calculate_required_resources."""
-    res_json = calculate_required_resources(demand={"bike-mounted machine gun": 2.0})
-    data = json.loads(res_json)
+    data = calculate_required_resources(demand={"bike-mounted machine gun": 2.0})
 
     assert "resolved_demand" in data
     assert data["resolved_demand"]["00MS “Stinger”"] == 2.0

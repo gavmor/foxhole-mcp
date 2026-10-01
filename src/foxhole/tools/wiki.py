@@ -1,7 +1,7 @@
 """MCP tools for querying and parsing Foxhole MediaWiki content."""
 
-import json
 import logging
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
@@ -56,7 +56,7 @@ class WikiTools:
 
         return name
 
-    async def search_foxhole_wiki(self, query: str, limit: int = 5) -> str:
+    async def search_foxhole_wiki(self, query: str, limit: int = 5) -> dict[str, Any]:
         """Search the Foxhole wiki (foxhole.wiki.gg) for articles matching the query.
 
         Args:
@@ -65,7 +65,7 @@ class WikiTools:
         """
         results = await self.client.search(query, limit=limit)
         if not results:
-            return json.dumps({"query": query, "total_results": 0, "results": []})
+            return {"query": query, "total_results": 0, "results": []}
 
         out = [
             {
@@ -76,9 +76,9 @@ class WikiTools:
             }
             for r in results
         ]
-        return json.dumps({"query": query, "total_results": len(out), "results": out}, indent=2)
+        return {"query": query, "total_results": len(out), "results": out}
 
-    async def get_vehicle_stats(self, vehicle_name: str) -> str:
+    async def get_vehicle_stats(self, vehicle_name: str) -> dict[str, Any]:
         """Get structured specifications for any Foxhole vehicle.
 
         Extracts hit points, armor rating, min/max penetration chances, subsystem
@@ -91,26 +91,21 @@ class WikiTools:
         resolved = await self.resolve_title(vehicle_name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
-            return json.dumps(
-                {"error": f"Vehicle '{vehicle_name}' could not be found on foxhole.wiki.gg."}
-            )
+            return {"error": f"Vehicle '{vehicle_name}' could not be found on foxhole.wiki.gg."}
 
         vehicle = parse_vehicle(data["title"], data["wikitext"])
         if not vehicle:
             content = parse_page_content(data["title"], data["wikitext"])
-            return json.dumps(
-                {
-                    "warning": f"'{data['title']}' is not categorized with a Vehicle Infobox.",
-                    "title": content.title,
-                    "summary": content.summary,
-                    "url": content.wiki_url,
-                },
-                indent=2,
-            )
+            return {
+                "warning": f"'{data['title']}' is not categorized with a Vehicle Infobox.",
+                "title": content.title,
+                "summary": content.summary,
+                "url": content.wiki_url,
+            }
 
-        return json.dumps(vehicle.model_dump(exclude_none=True), indent=2)
+        return vehicle.model_dump(exclude_none=True)
 
-    async def get_item_stats(self, item_name: str) -> str:
+    async def get_item_stats(self, item_name: str) -> dict[str, Any]:
         """Get structured statistics for weapons, equipment, ammunition, and items.
 
         Extracts damage, ammo compatibility, magazine size, fire rate, ranges,
@@ -122,26 +117,21 @@ class WikiTools:
         resolved = await self.resolve_title(item_name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
-            return json.dumps(
-                {"error": f"Item '{item_name}' could not be found on foxhole.wiki.gg."}
-            )
+            return {"error": f"Item '{item_name}' could not be found on foxhole.wiki.gg."}
 
         item = parse_item(data["title"], data["wikitext"])
         if not item:
             content = parse_page_content(data["title"], data["wikitext"])
-            return json.dumps(
-                {
-                    "warning": f"'{data['title']}' is not categorized with an Item Infobox.",
-                    "title": content.title,
-                    "summary": content.summary,
-                    "url": content.wiki_url,
-                },
-                indent=2,
-            )
+            return {
+                "warning": f"'{data['title']}' is not categorized with an Item Infobox.",
+                "title": content.title,
+                "summary": content.summary,
+                "url": content.wiki_url,
+            }
 
-        return json.dumps(item.model_dump(exclude_none=True), indent=2)
+        return item.model_dump(exclude_none=True)
 
-    async def get_structure_stats(self, structure_name: str) -> str:
+    async def get_structure_stats(self, structure_name: str) -> dict[str, Any]:
         """Get structured statistics for fortifications, bases, and world buildings.
 
         Extracts structure HP, armor tier, decay resistance, repair costs,
@@ -153,26 +143,21 @@ class WikiTools:
         resolved = await self.resolve_title(structure_name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
-            return json.dumps(
-                {"error": f"Structure '{structure_name}' could not be found on foxhole.wiki.gg."}
-            )
+            return {"error": f"Structure '{structure_name}' could not be found on foxhole.wiki.gg."}
 
         structure = parse_structure(data["title"], data["wikitext"])
         if not structure:
             content = parse_page_content(data["title"], data["wikitext"])
-            return json.dumps(
-                {
-                    "warning": f"'{data['title']}' is not categorized with a Structure Infobox.",
-                    "title": content.title,
-                    "summary": content.summary,
-                    "url": content.wiki_url,
-                },
-                indent=2,
-            )
+            return {
+                "warning": f"'{data['title']}' is not categorized with a Structure Infobox.",
+                "title": content.title,
+                "summary": content.summary,
+                "url": content.wiki_url,
+            }
 
-        return json.dumps(structure.model_dump(exclude_none=True), indent=2)
+        return structure.model_dump(exclude_none=True)
 
-    async def get_production_cost(self, name: str) -> str:
+    async def get_production_cost(self, name: str) -> dict[str, Any]:
         """Get manufacturing and logistics recipes for any vehicle, weapon, ammo, or structure.
 
         Returns the production facility (Garage, Factory, MPF, Small Assembly Station),
@@ -185,60 +170,46 @@ class WikiTools:
         resolved = await self.resolve_title(name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
-            return json.dumps({"error": f"Entity '{name}' could not be found on foxhole.wiki.gg."})
+            return {"error": f"Entity '{name}' could not be found on foxhole.wiki.gg."}
 
         wikitext = data["wikitext"]
         title = data["title"]
 
         v = parse_vehicle(title, wikitext)
         if v and v.production:
-            return json.dumps(
-                {
-                    "name": v.name,
-                    "entity_type": "vehicle",
-                    "production_recipes": [p.model_dump(exclude_none=True) for p in v.production],
-                    "wiki_url": v.wiki_url,
-                },
-                indent=2,
-            )
+            return {
+                "name": v.name,
+                "entity_type": "vehicle",
+                "production_recipes": [p.model_dump(exclude_none=True) for p in v.production],
+                "wiki_url": v.wiki_url,
+            }
 
         item = parse_item(title, wikitext)
         if item and item.production:
-            return json.dumps(
-                {
-                    "name": item.name,
-                    "entity_type": "item",
-                    "crate_amount": item.crate_amount,
-                    "production_recipes": [
-                        p.model_dump(exclude_none=True) for p in item.production
-                    ],
-                    "wiki_url": item.wiki_url,
-                },
-                indent=2,
-            )
+            return {
+                "name": item.name,
+                "entity_type": "item",
+                "crate_amount": item.crate_amount,
+                "production_recipes": [p.model_dump(exclude_none=True) for p in item.production],
+                "wiki_url": item.wiki_url,
+            }
 
         s = parse_structure(title, wikitext)
         if s and s.production:
-            return json.dumps(
-                {
-                    "name": s.name,
-                    "entity_type": "structure",
-                    "production_recipes": [p.model_dump(exclude_none=True) for p in s.production],
-                    "wiki_url": s.wiki_url,
-                },
-                indent=2,
-            )
+            return {
+                "name": s.name,
+                "entity_type": "structure",
+                "production_recipes": [p.model_dump(exclude_none=True) for p in s.production],
+                "wiki_url": s.wiki_url,
+            }
 
-        return json.dumps(
-            {
-                "name": title,
-                "message": "No standard production recipes were parsed from this article's infobox.",
-                "wiki_url": f"https://foxhole.wiki.gg/wiki/{title.replace(' ', '_')}",
-            },
-            indent=2,
-        )
+        return {
+            "name": title,
+            "message": "No standard production recipes were parsed from this article's infobox.",
+            "wiki_url": f"https://foxhole.wiki.gg/wiki/{title.replace(' ', '_')}",
+        }
 
-    async def get_page_overview(self, title: str) -> str:
+    async def get_page_overview(self, title: str) -> dict[str, Any]:
         """Get clean text overview and section contents for any article on foxhole.wiki.gg.
 
         Removes wikitext syntax, template noise, and navigation boxes.
@@ -248,10 +219,10 @@ class WikiTools:
         """
         data = await self.client.get_page_data(title)
         if not data or not data.get("wikitext"):
-            return json.dumps({"error": f"Article '{title}' could not be found."})
+            return {"error": f"Article '{title}' could not be found."}
 
         content = parse_page_content(data["title"], data["wikitext"])
-        return json.dumps(content.model_dump(exclude_none=True), indent=2)
+        return content.model_dump(exclude_none=True)
 
     async def edit_wiki_page(
         self,
@@ -263,7 +234,7 @@ class WikiTools:
         bot: bool = False,
         createonly: bool = False,
         nocreate: bool = False,
-    ) -> str:
+    ) -> dict[str, Any]:
         """Create or edit a page on foxhole.wiki.gg using the MediaWiki action=edit API.
 
         Requires wiki authentication credentials (set FOXHOLE_WIKI_USERNAME and
@@ -310,39 +281,30 @@ class WikiTools:
                 contentmodel=edit_data.get("contentmodel"),
                 url=wiki_url,
             )
-            return json.dumps(res.model_dump(exclude_none=True), indent=2)
+            return res.model_dump(exclude_none=True)
         except WikiAuthenticationError as e:
             logger.error("Authentication error editing '%s': %s", title, e)
-            return json.dumps(
-                {
-                    "error": str(e),
-                    "title": title,
-                    "type": "authentication_error",
-                },
-                indent=2,
-            )
+            return {
+                "error": str(e),
+                "title": title,
+                "type": "authentication_error",
+            }
         except WikiEditError as e:
             logger.error("MediaWiki edit error on '%s': [%s] %s", title, e.code, e.info)
-            return json.dumps(
-                {
-                    "error": str(e),
-                    "code": e.code,
-                    "info": e.info,
-                    "title": title,
-                    "type": "edit_error",
-                },
-                indent=2,
-            )
+            return {
+                "error": str(e),
+                "code": e.code,
+                "info": e.info,
+                "title": title,
+                "type": "edit_error",
+            }
         except Exception as e:
             logger.error("Unexpected error editing '%s': %s", title, e)
-            return json.dumps(
-                {
-                    "error": f"Failed to edit wiki page: {e}",
-                    "title": title,
-                    "type": "unexpected_error",
-                },
-                indent=2,
-            )
+            return {
+                "error": f"Failed to edit wiki page: {e}",
+                "title": title,
+                "type": "unexpected_error",
+            }
 
     def register(self, server: MCPServer) -> None:
         """Register all wiki tools with the given MCP server."""

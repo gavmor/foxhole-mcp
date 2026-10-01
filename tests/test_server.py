@@ -1,7 +1,5 @@
 """Unit tests for Foxhole MCP Server tools."""
 
-import json
-
 import pytest
 
 from foxhole.server import (
@@ -41,8 +39,7 @@ async def test_mcp_server_registration():
 @pytest.mark.asyncio
 async def test_search_foxhole_wiki():
     """Test live search query on foxhole.wiki.gg."""
-    res_str = await search_foxhole_wiki("Bunker", limit=3)
-    data = json.loads(res_str)
+    data = await search_foxhole_wiki("Bunker", limit=3)
     assert data["query"] == "Bunker"
     assert "results" in data
     assert len(data["results"]) > 0
@@ -51,8 +48,7 @@ async def test_search_foxhole_wiki():
 @pytest.mark.asyncio
 async def test_get_vehicle_stats_live():
     """Test vehicle parsing through MCP tool with live wiki data."""
-    res_str = await get_vehicle_stats("Silverhand - Mk. IV")
-    data = json.loads(res_str)
+    data = await get_vehicle_stats("Silverhand - Mk. IV")
     assert data["name"] == "Silverhand - Mk. IV"
     assert data["faction"] == "Warden"
     assert data["health"] == 3100
@@ -63,8 +59,7 @@ async def test_get_vehicle_stats_live():
 @pytest.mark.asyncio
 async def test_get_item_stats_live():
     """Test item parsing through MCP tool with live wiki data."""
-    res_str = await get_item_stats("No.2 Loughcaster")
-    data = json.loads(res_str)
+    data = await get_item_stats("No.2 Loughcaster")
     assert data["name"] == "No.2 Loughcaster"
     assert data["ammo"] == "7.62mm"
     assert data["crate_amount"] == 20
@@ -73,8 +68,7 @@ async def test_get_item_stats_live():
 @pytest.mark.asyncio
 async def test_get_production_cost_live():
     """Test production recipe lookup through MCP tool."""
-    res_str = await get_production_cost("Dunne Transport")
-    data = json.loads(res_str)
+    data = await get_production_cost("Dunne Transport")
     assert "production_recipes" in data
     assert len(data["production_recipes"]) > 0
     assert data["production_recipes"][0]["source"] == "Garage"
@@ -120,14 +114,12 @@ async def test_create_server_custom_components():
 
     # Test invoking with mocked war client
     res = await custom_war.get_active_maps()
-    parsed = json.loads(res)
-    assert parsed["maps"] == ["TestHex"]
+    assert res["maps"] == ["TestHex"]
 
     # Test wiki resolution and item stats with mocked wiki client
     res_item = await custom_wiki.get_item_stats("CustomItem")
-    parsed_item = json.loads(res_item)
-    assert parsed_item["name"] == "CustomItem"
-    assert parsed_item["ammo"] == "9mm"
+    assert res_item["name"] == "CustomItem"
+    assert res_item["ammo"] == "9mm"
 
 
 @pytest.mark.asyncio

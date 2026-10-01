@@ -1,8 +1,8 @@
 """MCP tools for Foxhole production planning and Bill of Materials."""
 
-import json
 import logging
 from collections.abc import Callable
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
@@ -39,7 +39,7 @@ def calculate_required_resources(
     demand: dict[str, float],
     include_machine_counts: bool = False,
     time_window_seconds: float | None = None,
-) -> str:
+) -> dict[str, Any]:
     """Calculate total raw resources, refined materials, intermediate components, and facility counts needed to produce any Foxhole vehicle, weapon, ammunition, or facility good.
 
     Solves the curried Leontief input-output balance equation x = (I - A)^(-1) d at compile/initialization time.
@@ -72,12 +72,12 @@ def calculate_required_resources(
                 include_machine_counts=include_machine_counts,
                 time_window_seconds=time_window_seconds,
             )
-            return json.dumps(plan.model_dump(exclude_none=True), indent=2)
+            return plan.model_dump(exclude_none=True)
     except ValueError as e:
-        return json.dumps({"error": str(e)}, indent=2)
+        return {"error": str(e)}
     except Exception as e:
         logger.exception("Failed to calculate required resources")
-        return json.dumps({"error": f"Internal error solving production demand: {e}"}, indent=2)
+        return {"error": f"Internal error solving production demand: {e}"}
 
 
 class ProductionTools:
@@ -97,7 +97,7 @@ class ProductionTools:
         quantity: float = 1,
         recipe_overrides: dict[str, dict[str, float]] | None = None,
         recipe_choice: dict[str, int] | None = None,
-    ) -> str:
+    ) -> dict[str, Any]:
         """Compute the full bill of materials to produce any Foxhole vehicle, item, or structure.
 
         Recursively pulls recipes from foxhole.wiki.gg, rolls up totals down to raw resources
@@ -137,9 +137,9 @@ class ProductionTools:
                     recipe_overrides=recipe_overrides,
                     recipe_choice=recipe_choice,
                 )
-                return json.dumps(result, indent=2)
+                return result
         except ValueError as e:
-            return json.dumps({"error": str(e)}, indent=2)
+            return {"error": str(e)}
 
 
 default_production_tools = ProductionTools()
@@ -150,7 +150,7 @@ async def plan_production(
     quantity: float = 1,
     recipe_overrides: dict[str, dict[str, float]] | None = None,
     recipe_choice: dict[str, int] | None = None,
-) -> str:
+) -> dict[str, Any]:
     """Module-level convenience wrapper for default_production_tools.plan_production."""
     return await default_production_tools.plan_production(
         target=target,

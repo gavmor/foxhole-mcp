@@ -1,7 +1,7 @@
 """MCP tools for querying Foxhole live War API telemetry and world state."""
 
-import json
 import logging
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
@@ -24,7 +24,7 @@ class WarApiTools:
         """Close the underlying War API client."""
         await self.war_client.close()
 
-    async def get_war_status(self, shard: str = DEFAULT_SHARD) -> str:
+    async def get_war_status(self, shard: str = DEFAULT_SHARD) -> dict[str, Any]:
         """Query live World Conquest status, war number, active winner, and victory requirements.
 
         Args:
@@ -32,11 +32,9 @@ class WarApiTools:
         """
         state = await self.war_client.get_war_state(shard=shard)
         if not state:
-            return json.dumps(
-                {
-                    "error": f"Failed to retrieve War state from shard '{shard}'. Server may be offline."
-                }
-            )
+            return {
+                "error": f"Failed to retrieve War state from shard '{shard}'. Server may be offline."
+            }
 
         out = {
             "shard": shard,
@@ -49,11 +47,11 @@ class WarApiTools:
             "required_victory_towns": state.required_victory_towns,
             "short_required_victory_towns": state.short_required_victory_towns,
         }
-        return json.dumps(out, indent=2)
+        return out
 
     async def get_war_casualties(
         self, map_name: str | None = None, shard: str = DEFAULT_SHARD
-    ) -> str:
+    ) -> dict[str, Any]:
         """Query player casualties and enlistments from the official War API.
 
         If map_name is provided, returns statistics for that specific hex.
@@ -67,50 +65,41 @@ class WarApiTools:
         if map_name:
             report = await self.war_client.get_war_report(map_name, shard=shard)
             if not report:
-                return json.dumps(
-                    {
-                        "error": (
-                            f"Could not retrieve war report for hex '{map_name}' on shard '{shard}'."
-                        )
-                    }
-                )
-            return json.dumps(
-                {
-                    "shard": shard,
-                    "map_name": report.map_name,
-                    "day_of_war": report.day_of_war,
-                    "total_enlistments": report.total_enlistments,
-                    "colonial_casualties": report.colonial_casualties,
-                    "warden_casualties": report.warden_casualties,
-                    "total_casualties": report.total_casualties,
-                    "casualty_difference": report.warden_casualties - report.colonial_casualties,
-                },
-                indent=2,
-            )
+                return {
+                    "error": f"Could not retrieve war report for hex '{map_name}' on shard '{shard}'."
+                }
+            return {
+                "shard": shard,
+                "map_name": report.map_name,
+                "day_of_war": report.day_of_war,
+                "total_enlistments": report.total_enlistments,
+                "colonial_casualties": report.colonial_casualties,
+                "warden_casualties": report.warden_casualties,
+                "total_casualties": report.total_casualties,
+                "casualty_difference": report.warden_casualties - report.colonial_casualties,
+            }
 
         global_stats = await self.war_client.get_global_casualties(shard=shard)
         if not global_stats:
-            return json.dumps(
-                {"error": f"Could not compute global casualties for shard '{shard}'."}
-            )
+            return {"error": f"Could not compute global casualties for shard '{shard}."}
 
-        return json.dumps(global_stats.model_dump(), indent=2)
+        return global_stats.model_dump()
 
-    async def get_active_maps(self, shard: str = DEFAULT_SHARD) -> str:
+    async def get_active_maps(self, shard: str = DEFAULT_SHARD) -> dict[str, Any]:
         """List all active World Conquest map hexes on the server.
 
         Args:
             shard: Shard name (default: 'live-1')
         """
         maps = await self.war_client.get_maps(shard=shard)
-        return json.dumps({"shard": shard, "total_maps": len(maps), "maps": maps}, indent=2)
+        return {"shard": shard, "total_maps": len(maps), "maps": maps}
 
     async def get_map_intel(
         self,
         map_name: str,
         filter_category: str | None = None,
         shard: str = DEFAULT_SHARD,
-    ) -> str:
+    ) -> dict[str, Any]:
         """Retrieve tactical intelligence for a map hex: base control, victory points, facilities, and resource fields.
 
         Args:
@@ -122,9 +111,9 @@ class WarApiTools:
         static_data = await self.war_client.get_static_map_data(map_name, shard=shard)
 
         if not dynamic_data and not static_data:
-            return json.dumps(
-                {"error": f"Could not retrieve map telemetry for '{map_name}' on shard '{shard}'."}
-            )
+            return {
+                "error": f"Could not retrieve map telemetry for '{map_name}' on shard '{shard}."
+            }
 
         # Combine items
         items = []
@@ -184,9 +173,9 @@ class WarApiTools:
                 for i in items
             ],
         }
-        return json.dumps(out, indent=2)
+        return out
 
-    async def get_victory_town_status(self, shard: str = DEFAULT_SHARD) -> str:
+    async def get_victory_town_status(self, shard: str = DEFAULT_SHARD) -> dict[str, Any]:
         """Calculate the global victory town score and victory requirement for the active war.
 
         Args:
@@ -194,10 +183,8 @@ class WarApiTools:
         """
         vt_status = await self.war_client.get_victory_town_status(shard=shard)
         if not vt_status:
-            return json.dumps(
-                {"error": f"Failed to calculate victory town status for shard '{shard}'."}
-            )
-        return json.dumps(vt_status.model_dump(), indent=2)
+            return {"error": f"Failed to calculate victory town status for shard '{shard}."}
+        return vt_status.model_dump()
 
     def register(self, server: MCPServer) -> None:
         """Register all War API tools with the given MCP server."""

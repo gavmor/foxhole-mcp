@@ -1,6 +1,5 @@
 """Unit tests for MediaWiki editing, authentication, and CSRF token handling."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -396,13 +395,12 @@ async def test_edit_wiki_page_tool_success():
     }
 
     tools = WikiTools(client=mock_client)
-    res_str = await tools.edit_wiki_page(
+    data = await tools.edit_wiki_page(
         title="Logistics",
         content="== Basic Materials ==\nRefined from salvage.",
         summary="Add Basic Materials description",
     )
 
-    data = json.loads(res_str)
     assert data["result"] == "Success"
     assert data["title"] == "Logistics"
     assert data["pageid"] == 123
@@ -410,7 +408,7 @@ async def test_edit_wiki_page_tool_success():
     assert data["nochange"] is False
     assert data["url"] == "https://foxhole.wiki.gg/wiki/Logistics"
 
-    edit_res = WikiEditResult.model_validate_json(res_str)
+    edit_res = WikiEditResult.model_validate(data)
     assert edit_res.result == "Success"
     assert edit_res.title == "Logistics"
     assert edit_res.pageid == 123
@@ -438,12 +436,11 @@ async def test_edit_wiki_page_tool_nochange():
     }
 
     tools = WikiTools(client=mock_client)
-    res_str = await tools.edit_wiki_page(
+    data = await tools.edit_wiki_page(
         title="IdenticalPage",
         content="Same content as before",
     )
 
-    data = json.loads(res_str)
     assert data["result"] == "Success"
     assert data["nochange"] is True
     assert data["title"] == "IdenticalPage"
@@ -458,9 +455,8 @@ async def test_edit_wiki_page_tool_auth_error():
     )
 
     tools = WikiTools(client=mock_client)
-    res_str = await tools.edit_wiki_page(title="SecretPage", content="Confidential")
+    data = await tools.edit_wiki_page(title="SecretPage", content="Confidential")
 
-    data = json.loads(res_str)
     assert data["type"] == "authentication_error"
     assert "Invalid credentials" in data["error"]
     assert data["title"] == "SecretPage"
@@ -477,9 +473,8 @@ async def test_edit_wiki_page_tool_edit_error():
     )
 
     tools = WikiTools(client=mock_client)
-    res_str = await tools.edit_wiki_page(title="NonExistent", content="Hello", nocreate=True)
+    data = await tools.edit_wiki_page(title="NonExistent", content="Hello", nocreate=True)
 
-    data = json.loads(res_str)
     assert data["type"] == "edit_error"
     assert data["code"] == "nocreate-missing"
     assert "does not exist" in data["info"]
