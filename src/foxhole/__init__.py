@@ -3,6 +3,13 @@
 __version__ = "0.2.0"
 
 from foxhole.client import FoxholeWikiClient
+from foxhole.leontief import (
+    LeontiefRequest,
+    LeontiefResponse,
+    MachineCount,
+    MachineSpec,
+    solve_leontief,
+)
 from foxhole.models import (
     Armament,
     ItemStats,
@@ -39,6 +46,10 @@ __all__ = [
     "FoxholeWikiClient",
     "GlobalCasualties",
     "ItemStats",
+    "LeontiefRequest",
+    "LeontiefResponse",
+    "MachineCount",
+    "MachineSpec",
     "MapData",
     "MapFlags",
     "MapItem",
@@ -55,4 +66,5 @@ __all__ = [
     "__version__",
     "get_icon_name",
     "server",
+    "solve_leontief",
 ]

@@ -6,6 +6,13 @@ import logging
 from mcp.server.mcpserver import MCPServer
 
 from foxhole.client import FoxholeWikiClient
+from foxhole.leontief import (
+    LeontiefRequest,
+    MachineSpec,
+)
+from foxhole.leontief import (
+    solve_leontief as calculate_leontief,
+)
 from foxhole.parser import (
     parse_item,
     parse_page_content,
@@ -445,6 +452,50 @@ async def get_victory_town_status(shard: str = DEFAULT_SHARD) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Leontief Input-Output Factory Optimization
+# ---------------------------------------------------------------------------
+
+
+@server.tool()
+def solve_leontief(
+    items: list[str],
+    coefficients_matrix: list[list[float]],
+    external_demand: dict[str, float],
+    machines: dict[str, MachineSpec] | None = None,
+) -> str:
+    """Solve the Leontief balance equation (I - A)x = d for gross production rates and machine counts.
+
+    Solves the linear input-output economic model using NumPy (np.linalg.solve(I - A, d)).
+    Computes gross production rates (x) required to satisfy target net output (d) while
+    accounting for internal recipe consumption loops (c = Ax). Optionally calculates
+    exact fractional and integer machine counts (N = x*t / (y*s)).
+
+    Guards against:
+    - Matrix dimension mismatches
+    - Missing demand items
+    - Singular loops (LinAlgError)
+    - Hawkins-Simon condition violations (negative production indicating impossible loops)
+
+    Args:
+        items: Ordered list of item names, e.g. ['circuit', 'wire', 'plate']
+        coefficients_matrix: Matrix A where A[i][j] is unit amount of item i needed to produce 1 unit of item j
+        external_demand: Desired net export rate per second {item: demand_rate}
+        machines: Optional machine specs per item {item: {crafting_time, yield_per_craft, machine_speed}}
+    """
+    try:
+        req = LeontiefRequest(
+            items=items,
+            coefficients_matrix=coefficients_matrix,
+            external_demand=external_demand,
+            machines=machines,
+        )
+        result = calculate_leontief(req)
+        return json.dumps(result, indent=2)
+    except ValueError as e:
+        return json.dumps({"error": str(e)}, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # MCP Prompts
 # ---------------------------------------------------------------------------
 
@@ -487,3 +538,19 @@ def frontline_intel(map_name: str, shard: str = DEFAULT_SHARD) -> str:
 2. Review base control distribution between Colonials and Wardens.
 3. Identify presence of Victory Towns, scorched bases, or rocket targets.
 4. Map key logistics assets (factories, refineries, seaports) and strategic approach angles."""
+
+
+@server.prompt()
+def leontief_facility_planner(target_production: str) -> str:
+    """Prompt template for formulating and solving a multi-tier facility supply chain."""
+    return f"""Please formulate and solve the Leontief input-output balance equation for this facility goal:
+Target: {target_production}
+
+Steps:
+1. Identify all raw resources, intermediate components, and final products in the supply chain.
+2. Build the ordered list of items: items = [item_1, item_2, ...]
+3. Construct the technical coefficients matrix A where A[i][j] is the units of item i consumed to produce 1 unit of item j.
+4. Define the external net demand vector d.
+5. If machine cycle times are known, define machine specifications (crafting_time, yield_per_craft, machine_speed).
+6. Call `solve_leontief` with (items, coefficients_matrix, external_demand, machines) to compute gross rates, internal consumption, and exact facility counts.
+7. Interpret the results and check for any logistical bottlenecks."""

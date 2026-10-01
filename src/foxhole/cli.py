@@ -207,6 +207,45 @@ async def run_victory(shard: str = DEFAULT_SHARD) -> None:
         await war_client.close()
 
 
+def run_leontief(
+    json_input: str | None = None,
+    file_path: str | None = None,
+    demo: bool = False,
+) -> None:
+    from foxhole.leontief import LeontiefRequest, MachineSpec, solve_leontief
+
+    if demo:
+        req = LeontiefRequest(
+            items=["circuit", "wire", "plate"],
+            coefficients_matrix=[
+                [0.0, 0.0, 0.0],
+                [3.0, 0.0, 0.1],
+                [1.0, 0.0, 0.0],
+            ],
+            external_demand={"circuit": 10.0, "wire": 0.0, "plate": 5.0},
+            machines={
+                "wire": MachineSpec(crafting_time=0.5, yield_per_craft=2.0, machine_speed=0.75)
+            },
+        )
+        print("--- Leontief Solver Demo (Circuits, Wire, Plates) ---")
+        result = solve_leontief(req)
+        print(_format_dict(result))
+        return
+
+    if file_path:
+        with open(file_path, encoding="utf-8") as f:
+            data = json.load(f)
+    elif json_input:
+        data = json.loads(json_input)
+    else:
+        print("Please provide --demo, --json '<json_str>', or a path to a JSON file.")
+        return
+
+    req = LeontiefRequest.model_validate(data)
+    result = solve_leontief(req)
+    print(_format_dict(result))
+
+
 # ---------------------------------------------------------------------------
 # Main CLI Dispatcher
 # ---------------------------------------------------------------------------
@@ -275,6 +314,16 @@ def main() -> None:
     vic_parser = subparsers.add_parser("victory", help="Get victory town scores and requirements")
     vic_parser.add_argument("--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)")
 
+    # Leontief Factory Calculator
+    leontief_parser = subparsers.add_parser(
+        "leontief", help="Solve Leontief input-output production balance equation"
+    )
+    leontief_parser.add_argument("file", nargs="?", help="Path to JSON file with LeontiefRequest")
+    leontief_parser.add_argument("--json", dest="json_str", help="JSON string of LeontiefRequest")
+    leontief_parser.add_argument(
+        "--demo", action="store_true", help="Run the circuits/wire/plates demonstration"
+    )
+
     args = parser.parse_args()
 
     if args.command is None or args.command == "mcp":
@@ -303,6 +352,12 @@ def main() -> None:
         asyncio.run(run_intel(args.map_name, args.category, args.shard))
     elif args.command == "victory":
         asyncio.run(run_victory(args.shard))
+    elif args.command == "leontief":
+        run_leontief(
+            json_input=getattr(args, "json_str", None),
+            file_path=getattr(args, "file", None),
+            demo=getattr(args, "demo", False),
+        )
     else:
         parser.print_help()
         sys.exit(1)

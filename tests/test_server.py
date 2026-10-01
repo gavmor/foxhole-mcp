@@ -24,11 +24,13 @@ async def test_mcp_server_registration():
     assert "get_structure_stats" in tool_names
     assert "get_production_cost" in tool_names
     assert "get_page_overview" in tool_names
+    assert "solve_leontief" in tool_names
 
     prompts = await server.list_prompts()
     prompt_names = [p.name for p in prompts]
     assert "combat_intel" in prompt_names
     assert "logistics_plan" in prompt_names
+    assert "leontief_facility_planner" in prompt_names
 
 
 @pytest.mark.asyncio
