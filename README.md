@@ -326,9 +326,16 @@ foxhole/
 │       ├── economy.py     # Precompiled Curried Leontief solver (A, L = (I-A)^-1)
 │       ├── models.py      # Pydantic data schemas (Vehicle, Item, Structure, Recipe)
 │       ├── parser.py      # wikitextparser template & structure extractor
-│       ├── server.py      # FastMCP server exposing Wiki tools, War API & BOM
+│       ├── server.py      # MCP server orchestrator & factory (create_server)
+│       ├── prompts.py     # MCP prompt templates (combat, logistics, war briefing, BOM)
 │       ├── leontief.py    # Base NumPy Leontief (I - A)x = d linear solver
+│       ├── planner.py     # Dynamic recursive wiki production planner
 │       ├── cli.py         # Command-line interface for Wiki, War API, BOM & Leontief
+│       ├── tools/         # Modular MCP tool components
+│       │   ├── __init__.py
+│       │   ├── wiki.py    # MediaWiki tools component (WikiTools)
+│       │   ├── warapi.py  # War API telemetry component (WarApiTools)
+│       │   └── production.py # Production planning, Leontief & BOM tools
 │       └── warapi/        # clapfoot/warapi integration
 │           ├── __init__.py
 │           ├── client.py  # Async War API client with ETag support
@@ -337,7 +344,9 @@ foxhole/
 └── tests/
     ├── test_economy.py    # Curried Leontief BOM & multiplier tests
     ├── test_parser.py     # Parser unit tests
+    ├── test_planner.py    # Production planner tests
     ├── test_server.py     # MCP tools integration tests
     ├── test_warapi.py     # War API unit & integration tests
     └── test_leontief.py   # Leontief solver unit tests
 ```
+// weave: run 'weave explain README.md' for per-hunk detail, 'weave check' to verify your resolution

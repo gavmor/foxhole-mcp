@@ -28,7 +28,7 @@ from foxhole.models import (
     VehicleStats,
 )
 from foxhole.planner import plan_production
-from foxhole.server import server
+from foxhole.server import create_server, server
 from foxhole.warapi import (
     DEFAULT_SHARD,
     ICON_CATEGORIES,
@@ -77,6 +77,7 @@ __all__ = [
     "WarReport",
     "WarState",
     "__version__",
+    "create_server",
     "get_economy_solver",
     "get_icon_name",
     "plan_production",
