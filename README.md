@@ -188,6 +188,94 @@ uv run foxhole plan "Dunne Transport" --overrides '{"Basic Materials": {}}'
 
 ---
 
+## Telemetry
+
+The Foxhole MCP server includes optional **OpenTelemetry (OTel)** instrumentation to observe server performance, diagnose latency bottlenecks across upstream MediaWiki and WarAPI queries, and understand tool usage patterns.
+
+> [!NOTE]
+> **Privacy First & Opt-In by Default**: Telemetry is **disabled by default**. No traces, metrics, or telemetry network requests are emitted unless you explicitly opt in via CLI flags or environment variables. No user credentials, PII, prompt parameters, or chat payloads are collected.
+
+### Enabling Telemetry
+
+You can enable telemetry either via command-line flags or environment variables:
+
+#### 1. Command-Line Flags
+```bash
+# Enable telemetry when launching the MCP server
+uv run foxhole mcp --telemetry
+
+# Or using the alias
+uv run foxhole mcp --enable-telemetry
+
+# Enable telemetry during standalone CLI commands
+uv run foxhole --telemetry plan "Silverhand - Mk. IV"
+```
+
+#### 2. Environment Variables
+Set `FOXHOLE_TELEMETRY=1` (or `true`) in your environment or MCP client configuration:
+
+```json
+{
+  "mcpServers": {
+    "foxhole-wiki": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/user/Documents/foxhole",
+        "run",
+        "foxhole",
+        "mcp",
+        "--telemetry"
+      ],
+      "env": {
+        "FOXHOLE_TELEMETRY": "1",
+        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318",
+        "OTEL_SERVICE_NAME": "foxhole"
+      }
+    }
+  }
+}
+```
+
+### Disabling Telemetry (Opt-Out)
+
+If telemetry has been enabled in your shell or parent environment, you can explicitly disable or suppress it:
+
+- **CLI Flag**: Pass `--no-telemetry`:
+  ```bash
+  uv run foxhole mcp --no-telemetry
+  ```
+- **Environment Variables**:
+  - `FOXHOLE_TELEMETRY=0` (or `false`, `off`, `disabled`)
+  - `FASTMCP_TELEMETRY_MODE=off`
+  - `OTEL_SDK_DISABLED=true`
+
+### Configuration Reference
+
+| Parameter / Variable | Type / Values | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--telemetry` / `--no-telemetry` | CLI Flag | Disabled | Explicitly enable or disable OpenTelemetry instrumentation. |
+| `--enable-telemetry` | CLI Flag | Disabled | Alias for `--telemetry`. |
+| `--telemetry-mode` | `on` \| `off` \| `propagation_only` | `on` (when enabled) | Controls FastMCP span emission and W3C trace context extraction. |
+| `FOXHOLE_TELEMETRY` | `1`/`0`, `true`/`false` | Unset (disabled) | Primary opt-in environment toggle for OpenTelemetry. |
+| `FASTMCP_TELEMETRY_MODE` | `on` \| `off` \| `propagation_only` | `on` | FastMCP telemetry mode. Setting to `off` disables all spans. |
+| `OTEL_SDK_DISABLED` | `true` \| `false` | `false` | Standard OpenTelemetry SDK disable switch. |
+| `OTEL_SERVICE_NAME` | string | `foxhole` | Overrides the OpenTelemetry resource `service.name`. |
+| `OTEL_TRACES_EXPORTER` | `otlp` \| `console` \| `memory` \| `none` | `otlp` (or `console`) | Trace exporter backend. Defaults to OTLP when endpoint is configured. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | URL | `http://localhost:4318` | Target OTLP collector HTTP endpoint. |
+
+### Exported Data
+
+When telemetry is enabled, the server emits standard semantic convention spans:
+- **MCP Server Spans**: Emitted for incoming MCP tool executions (`tools/call` for `search_foxhole_wiki`, `get_vehicle_stats`, `plan_production`, etc.) and prompt generations (`prompts/get` for `combat_intel`, `logistics_plan`, etc.). Includes tool name, execution latency, and error status codes.
+- **Child Operation Spans**: Emitted for internal compute-intensive sub-operations, such as `plan_production.solve` and `calculate_required_resources.solve`.
+- **HTTP Client Spans**: Captured automatically via `HTTPXClientInstrumentor` for outbound HTTP requests to `foxhole.wiki.gg` and `war-service-live.foxholeservices.com`, detailing HTTP method, target URL, response status code, and latency.
+- **Context Propagation**: Propagates W3C Trace Context headers (`traceparent`, `tracestate`) across distributed traces and LLM client sessions.
+
+**Zero Sensitive Data**: Exported spans contain execution metadata and timings only. Raw wiki articles, prompt parameters, generated content, and user credentials are never captured as span attributes.
+
+---
+
 ## Cross-Domain Intelligence & Real-World Q&A
 
 A major advantage of `foxhole-mcp` is synthesizing **static MediaWiki game mechanics** (item recipes, crate capacities, vehicle armor ratings) with **live War API telemetry** (base control, town status, frontline casualties, and sector infrastructure).
@@ -327,6 +415,7 @@ foxhole/
 │       ├── parser.py      # wikitextparser template & structure extractor
 │       ├── server.py      # MCP server orchestrator & factory (create_server)
 │       ├── prompts.py     # MCP prompt templates (combat, logistics, war briefing, BOM)
+│       ├── telemetry.py   # OpenTelemetry setup, middleware & HTTPX instrumentation
 │       ├── leontief.py    # Base NumPy Leontief (I - A)x = d linear solver
 │       ├── planner.py     # Dynamic recursive wiki production planner
 │       ├── cli.py         # Command-line interface for Wiki, War API, BOM & planner
@@ -345,6 +434,7 @@ foxhole/
     ├── test_parser.py     # Parser unit tests
     ├── test_planner.py    # Production planner tests
     ├── test_server.py     # MCP tools integration tests
+    ├── test_telemetry.py  # OpenTelemetry unit & integration tests
     ├── test_warapi.py     # War API unit & integration tests
     └── test_leontief.py   # Leontief solver unit tests
 ```

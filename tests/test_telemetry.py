@@ -16,6 +16,7 @@ from foxhole.server import create_server
 from foxhole.telemetry import (
     InMemorySpanExporter,
     instrument_httpx_client,
+    is_telemetry_enabled,
     reset_telemetry,
     setup_telemetry,
     suppress_fastmcp_telemetry,
@@ -64,6 +65,73 @@ def test_setup_telemetry_defaults_and_resource():
     provider = setup_telemetry(exporter=exporter)
     assert isinstance(provider, TracerProvider)
     assert provider.resource.attributes.get("service.name") == "foxhole"
+
+
+def test_telemetry_opt_in_default(monkeypatch):
+    """Verify telemetry is disabled by default unless explicitly opted into."""
+    for var in [
+        "FOXHOLE_TELEMETRY",
+        "FASTMCP_TELEMETRY_MODE",
+        "OTEL_SDK_DISABLED",
+        "OTEL_TRACES_EXPORTER",
+        "OTEL_EXPORTER_OTLP_ENDPOINT",
+    ]:
+        monkeypatch.delenv(var, raising=False)
+
+    assert is_telemetry_enabled() is False
+    assert setup_telemetry() is None
+
+
+def test_telemetry_opt_in_foxhole_env(monkeypatch):
+    """Verify FOXHOLE_TELEMETRY environment variable controls opt-in state."""
+    monkeypatch.setenv("FOXHOLE_TELEMETRY", "1")
+    assert is_telemetry_enabled() is True
+    p = setup_telemetry(force=True)
+    assert isinstance(p, TracerProvider)
+
+    monkeypatch.setenv("FOXHOLE_TELEMETRY", "true")
+    assert is_telemetry_enabled() is True
+
+    monkeypatch.setenv("FOXHOLE_TELEMETRY", "0")
+    assert is_telemetry_enabled() is False
+    assert setup_telemetry() is None
+
+    monkeypatch.setenv("FOXHOLE_TELEMETRY", "false")
+    assert is_telemetry_enabled() is False
+
+
+def test_telemetry_cli_flag_enabled():
+    """Verify explicit enabled boolean (CLI --telemetry / --no-telemetry)."""
+    assert is_telemetry_enabled(enabled=True) is True
+    p = setup_telemetry(enabled=True, force=True)
+    assert isinstance(p, TracerProvider)
+
+    assert is_telemetry_enabled(enabled=False) is False
+    assert setup_telemetry(enabled=False) is None
+
+
+def test_create_server_telemetry_opt_in(monkeypatch):
+    """Verify create_server respects telemetry opt-in defaults and explicit flags."""
+    for var in ["FOXHOLE_TELEMETRY", "FASTMCP_TELEMETRY_MODE"]:
+        monkeypatch.delenv(var, raising=False)
+
+    # Disabled by default
+    srv_default = create_server()
+    assert is_telemetry_enabled() is False
+    # No telemetry middleware when disabled
+    assert not any(
+        type(m).__name__
+        in ("OpenTelemetryMiddleware", "PropagationOnlyMiddleware", "SmartTelemetryMiddleware")
+        for m in srv_default._lowlevel_server.middleware
+    )
+
+    # Explicitly enabled via flag
+    srv_enabled = create_server(telemetry=True)
+    assert any(
+        type(m).__name__
+        in ("OpenTelemetryMiddleware", "PropagationOnlyMiddleware", "SmartTelemetryMiddleware")
+        for m in srv_enabled._lowlevel_server.middleware
+    )
 
 
 def test_setup_telemetry_custom_service_name_and_attributes():

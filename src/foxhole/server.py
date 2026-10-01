@@ -50,9 +50,10 @@ def create_server(
     wiki_tools: WikiTools | None = None,
     war_tools: WarApiTools | None = None,
     telemetry_mode: str | None = None,
+    telemetry: bool | None = None,
 ) -> MCPServer:
     """Create and configure a Foxhole MCPServer instance with all tools and prompts."""
-    setup_telemetry(service_name=name, telemetry_mode=telemetry_mode)
+    setup_telemetry(service_name=name, telemetry_mode=telemetry_mode, enabled=telemetry)
 
     mcp_server = MCPServer(
         name=name,
@@ -65,7 +66,7 @@ def create_server(
     register_production_tools(mcp_server)
     register_prompts(mcp_server)
 
-    apply_telemetry_mode(mcp_server, mode=telemetry_mode)
+    apply_telemetry_mode(mcp_server, mode=telemetry_mode, enabled=telemetry)
 
     return mcp_server
 

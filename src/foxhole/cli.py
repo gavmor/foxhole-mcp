@@ -257,11 +257,23 @@ def run_resources(
 
 def main() -> None:
     """CLI entrypoint."""
-    setup_telemetry()
-
     parser = argparse.ArgumentParser(
         prog="foxhole",
         description="Foxhole MediaWiki MCP Server & War API telemetry tools",
+    )
+    parser.add_argument(
+        "--telemetry",
+        dest="telemetry",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable OpenTelemetry instrumentation (default: disabled / opt-in)",
+    )
+    parser.add_argument(
+        "--enable-telemetry",
+        dest="telemetry",
+        action="store_const",
+        const=True,
+        help="Alias to enable OpenTelemetry instrumentation",
     )
     subparsers = parser.add_subparsers(dest="command", help="Subcommand to run")
 
@@ -278,6 +290,20 @@ def main() -> None:
         type=int,
         default=8000,
         help="Port for SSE transport (default: 8000)",
+    )
+    mcp_parser.add_argument(
+        "--telemetry",
+        dest="telemetry",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable OpenTelemetry instrumentation (default: disabled / opt-in)",
+    )
+    mcp_parser.add_argument(
+        "--enable-telemetry",
+        dest="telemetry",
+        action="store_const",
+        const=True,
+        help="Alias to enable OpenTelemetry instrumentation",
     )
     mcp_parser.add_argument(
         "--telemetry-mode",
@@ -365,10 +391,15 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    telemetry_enabled = getattr(args, "telemetry", None)
+    setup_telemetry(enabled=telemetry_enabled)
 
     if args.command is None or args.command == "mcp":
-        if getattr(args, "telemetry_mode", None):
-            apply_telemetry_mode(server, mode=args.telemetry_mode)
+        apply_telemetry_mode(
+            server,
+            mode=getattr(args, "telemetry_mode", None),
+            enabled=telemetry_enabled,
+        )
         transport = getattr(args, "transport", "stdio")
         if transport == "sse":
             server.run(transport="sse", port=getattr(args, "port", 8000))
