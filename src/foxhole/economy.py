@@ -111,10 +111,7 @@ ECONOMY_REGISTRY: dict[str, ItemDefinition] = {
     "Explosive Powder": ItemDefinition(
         name="Explosive Powder",
         category=ItemCategory.REFINED_MATERIAL,
-        inputs={
-            "Salvage": 10.0,
-            "Sulfur": 2.0,
-        },  # Refinery ratio: 100 Salvage + 20 Sulfur -> 10 Emats
+        inputs={"Salvage": 5.0},  # Refinery ratio: 10 Salvage -> 2 Emats (5:1)
         facility_type="Refinery",
         crafting_time_sec=2.0,
         description="Explosive propellant for shells, grenades, and charges (Emats)",
