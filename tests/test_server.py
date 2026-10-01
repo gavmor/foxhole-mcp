@@ -174,3 +174,67 @@ def test_server_dynamic_attribute_delegation():
 
     with pytest.raises(AttributeError):
         _ = server_mod.non_existent_symbol
+
+
+@pytest.mark.asyncio
+async def test_mount_mcp_server():
+    """Verify mount_mcp_server copies tools, prompts, and resources from sub-server to target."""
+    from mcp.server.mcpserver import MCPServer
+
+    from foxhole.server import mount_mcp_server
+
+    root_server = MCPServer(name="root")
+    sub_server = MCPServer(name="sub")
+
+    @sub_server.tool()
+    def sub_tool(val: str) -> str:
+        """A sub-server tool."""
+        return f"sub:{val}"
+
+    @sub_server.prompt()
+    def sub_prompt(topic: str) -> str:
+        """A sub-server prompt."""
+        return f"Tell me about {topic}"
+
+    mount_mcp_server(root_server, sub_server)
+
+    tools = await root_server.list_tools()
+    assert "sub_tool" in [t.name for t in tools]
+
+    prompts = await root_server.list_prompts()
+    assert "sub_prompt" in [p.name for p in prompts]
+
+    from mcp.types import CallToolResult
+
+    # Verify tool execution on root server
+    res = await root_server.call_tool("sub_tool", {"val": "test"})
+    assert isinstance(res, CallToolResult)
+    assert not res.is_error
+    assert res.structured_content == {"result": "sub:test"}
+
+
+@pytest.mark.asyncio
+async def test_create_server_composite_mcpserver():
+    """Verify create_server mounts sub-server MCPServer instances passed as extensions."""
+    from mcp.server.mcpserver import MCPServer
+    from mcp.types import CallToolResult
+
+    from foxhole.server import create_server
+
+    sub_server = MCPServer(name="submodule")
+
+    @sub_server.tool()
+    def custom_sub_tool(count: int) -> int:
+        return count + 10
+
+    composite_server = create_server(extensions=[sub_server])
+
+    tools = await composite_server.list_tools()
+    tool_names = [t.name for t in tools]
+    assert "custom_sub_tool" in tool_names
+    assert "search_foxhole_wiki" not in tool_names
+
+    res = await composite_server.call_tool("custom_sub_tool", {"count": 5})
+    assert isinstance(res, CallToolResult)
+    assert not res.is_error
+    assert res.structured_content == {"result": 15}

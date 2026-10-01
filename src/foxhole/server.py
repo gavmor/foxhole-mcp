@@ -32,6 +32,15 @@ DEFAULT_EXTENSIONS: tuple[Any, ...] = (
 )
 
 
+def mount_mcp_server(target: MCPServer, source: MCPServer) -> None:
+    """Mount tools, prompts, and resources from a sub-server into the target MCPServer."""
+    target._tool_manager._tools.update(source._tool_manager._tools)
+    target._prompt_manager._prompts.update(source._prompt_manager._prompts)
+    if hasattr(source, "_resource_manager") and hasattr(target, "_resource_manager"):
+        target._resource_manager._resources.update(source._resource_manager._resources)
+        target._resource_manager._templates.update(source._resource_manager._templates)
+
+
 def create_server(
     name: str = "foxhole",
     description: str = "Foxhole MCP server combining MediaWiki data with live War API telemetry",
@@ -43,8 +52,8 @@ def create_server(
 ) -> MCPServer:
     """Create and configure a Foxhole MCPServer instance with modular extensions.
 
-    Extensions can be objects implementing `.register(server: MCPServer)` or callables
-    taking `(server: MCPServer)`.
+    Extensions can be `MCPServer` sub-instances, objects implementing `.register(server: MCPServer)`,
+    or callables taking `(server: MCPServer)`.
     """
     setup_telemetry(service_name=name, telemetry_mode=telemetry_mode, enabled=telemetry)
 
@@ -66,12 +75,16 @@ def create_server(
         active_extensions = [wiki, war, dispatches, production, prompts]
 
     for ext in active_extensions:
-        if hasattr(ext, "register") and callable(ext.register):
+        if isinstance(ext, MCPServer):
+            mount_mcp_server(mcp_server, ext)
+        elif hasattr(ext, "register") and callable(ext.register):
             ext.register(mcp_server)
         elif callable(ext):
             ext(mcp_server)
         else:
-            raise TypeError(f"Extension {ext!r} must have a .register() method or be callable")
+            raise TypeError(
+                f"Extension {ext!r} must be an MCPServer, have a .register() method, or be callable"
+            )
 
     apply_telemetry_mode(mcp_server, mode=telemetry_mode, enabled=telemetry)
 
