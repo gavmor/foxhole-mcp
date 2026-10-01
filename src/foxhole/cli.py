@@ -8,6 +8,7 @@ import sys
 from foxhole.client import FoxholeWikiClient
 from foxhole.parser import parse_item, parse_page_content, parse_structure, parse_vehicle
 from foxhole.server import _resolve_title, server
+from foxhole.telemetry import apply_telemetry_mode, setup_telemetry
 from foxhole.warapi import DEFAULT_SHARD, WarApiClient
 
 
@@ -256,6 +257,8 @@ def run_resources(
 
 def main() -> None:
     """CLI entrypoint."""
+    setup_telemetry()
+
     parser = argparse.ArgumentParser(
         prog="foxhole",
         description="Foxhole MediaWiki MCP Server & War API telemetry tools",
@@ -275,6 +278,12 @@ def main() -> None:
         type=int,
         default=8000,
         help="Port for SSE transport (default: 8000)",
+    )
+    mcp_parser.add_argument(
+        "--telemetry-mode",
+        choices=["on", "off", "propagation_only"],
+        default=None,
+        help="FastMCP telemetry mode (default: env FASTMCP_TELEMETRY_MODE or on)",
     )
 
     # Wiki Commands
@@ -358,6 +367,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command is None or args.command == "mcp":
+        if getattr(args, "telemetry_mode", None):
+            apply_telemetry_mode(server, mode=args.telemetry_mode)
         transport = getattr(args, "transport", "stdio")
         if transport == "sse":
             server.run(transport="sse", port=getattr(args, "port", 8000))

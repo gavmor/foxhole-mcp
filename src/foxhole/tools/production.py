@@ -13,9 +13,11 @@ from foxhole.parser import (
     parse_vehicle,
 )
 from foxhole.planner import plan_production as _plan_production
+from foxhole.telemetry import get_tracer
 from foxhole.tools.wiki import default_wiki_tools
 
 logger = logging.getLogger(__name__)
+tracer = get_tracer("foxhole")
 
 
 async def default_fetch_recipes(name: str) -> tuple[str, list[ProductionRecipe]] | None:
@@ -56,13 +58,20 @@ def calculate_required_resources(
         time_window_seconds: Time budget in seconds to produce the demand (default: 3600s / 1 hour if machine counts requested)
     """
     try:
-        solver = get_economy_solver()
-        plan = solver.solve(
-            demand=demand,
-            include_machine_counts=include_machine_counts,
-            time_window_seconds=time_window_seconds,
-        )
-        return json.dumps(plan.model_dump(exclude_none=True), indent=2)
+        with tracer.start_as_current_span(
+            "calculate_required_resources.solve",
+            attributes={
+                "foxhole.demand_keys": list(demand.keys()),
+                "foxhole.include_machines": include_machine_counts,
+            },
+        ):
+            solver = get_economy_solver()
+            plan = solver.solve(
+                demand=demand,
+                include_machine_counts=include_machine_counts,
+                time_window_seconds=time_window_seconds,
+            )
+            return json.dumps(plan.model_dump(exclude_none=True), indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)}, indent=2)
     except Exception as e:
@@ -103,14 +112,21 @@ async def plan_production(
         else default_fetch_recipes
     )
     try:
-        result = await _plan_production(
-            target,
-            quantity,
-            fetch_fn,
-            recipe_overrides=recipe_overrides,
-            recipe_choice=recipe_choice,
-        )
-        return json.dumps(result, indent=2)
+        with tracer.start_as_current_span(
+            "plan_production.solve",
+            attributes={
+                "foxhole.target": target,
+                "foxhole.quantity": quantity,
+            },
+        ):
+            result = await _plan_production(
+                target,
+                quantity,
+                fetch_fn,
+                recipe_overrides=recipe_overrides,
+                recipe_choice=recipe_choice,
+            )
+            return json.dumps(result, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)}, indent=2)
 

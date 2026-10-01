@@ -13,6 +13,7 @@ from foxhole.prompts import (
     register_prompts,
     strategic_war_overview,
 )
+from foxhole.telemetry import apply_telemetry_mode, setup_telemetry
 from foxhole.tools.production import (
     calculate_required_resources,
     default_fetch_recipes,
@@ -48,8 +49,11 @@ def create_server(
     version: str = "0.2.0",
     wiki_tools: WikiTools | None = None,
     war_tools: WarApiTools | None = None,
+    telemetry_mode: str | None = None,
 ) -> MCPServer:
     """Create and configure a Foxhole MCPServer instance with all tools and prompts."""
+    setup_telemetry(service_name=name, telemetry_mode=telemetry_mode)
+
     mcp_server = MCPServer(
         name=name,
         description=description,
@@ -60,6 +64,8 @@ def create_server(
     (war_tools or default_war_tools).register(mcp_server)
     register_production_tools(mcp_server)
     register_prompts(mcp_server)
+
+    apply_telemetry_mode(mcp_server, mode=telemetry_mode)
 
     return mcp_server
 
@@ -97,6 +103,7 @@ __all__ = [
     "production_planner",
     "search_foxhole_wiki",
     "server",
+    "setup_telemetry",
     "strategic_war_overview",
     "war_client",
 ]
