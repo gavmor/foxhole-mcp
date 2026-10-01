@@ -5,8 +5,7 @@ import logging
 import math
 from datetime import UTC, datetime
 
-from mcp.server.mcpserver import MCPServer
-
+from foxhole.tools.base import BaseToolProvider
 from foxhole.warapi import DEFAULT_SHARD, WarApiClient
 from foxhole.warapi.models import MapItem, MapTextItem
 
@@ -64,7 +63,7 @@ def _format_zulu_timestamp(now: datetime | None = None) -> tuple[str, str]:
     return timestamp, f"{seq_num:03d}"
 
 
-class DispatchesTools:
+class DispatchesTools(BaseToolProvider):
     """Generates period-authentic dieselpunk wire dispatches and propaganda cables."""
 
     def __init__(self, war_client: WarApiClient | None = None) -> None:
@@ -352,11 +351,6 @@ DATELINE: THERIZO REVOLUTIONARY ASSEMBLY PRESS BUREAU —"""
 
         body_text = "\n\n".join(lines)
         return f"{header}\n\n{body_text}"
-
-    def register(self, server: MCPServer) -> None:
-        """Register dispatch tools with the given MCP server."""
-        server.add_tool(self.get_flash_dispatch)
-        server.add_tool(self.get_propaganda_wire)
 
 
 default_dispatches_tools = DispatchesTools()

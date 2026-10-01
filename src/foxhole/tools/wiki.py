@@ -1,9 +1,7 @@
 """MCP tools for querying and parsing Foxhole MediaWiki content."""
 
 import logging
-from typing import Any
-
-from mcp.server.mcpserver import MCPServer
+from typing import Any, ClassVar
 
 from foxhole.client import (
     FoxholeWikiClient,
@@ -17,12 +15,15 @@ from foxhole.parser import (
     parse_structure,
     parse_vehicle,
 )
+from foxhole.tools.base import BaseToolProvider
 
 logger = logging.getLogger(__name__)
 
 
-class WikiTools:
+class WikiTools(BaseToolProvider):
     """Encapsulates Foxhole MediaWiki tools and their associated client."""
+
+    EXCLUDED_METHODS: ClassVar[set[str]] = {"register", "close", "resolve_title"}
 
     def __init__(self, client: FoxholeWikiClient | None = None) -> None:
         self.client = client or FoxholeWikiClient()
@@ -305,16 +306,6 @@ class WikiTools:
                 "title": title,
                 "type": "unexpected_error",
             }
-
-    def register(self, server: MCPServer) -> None:
-        """Register all wiki tools with the given MCP server."""
-        server.add_tool(self.search_foxhole_wiki)
-        server.add_tool(self.get_vehicle_stats)
-        server.add_tool(self.get_item_stats)
-        server.add_tool(self.get_structure_stats)
-        server.add_tool(self.get_production_cost)
-        server.add_tool(self.get_page_overview)
-        server.add_tool(self.edit_wiki_page)
 
 
 # Default singleton instance for convenience

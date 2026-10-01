@@ -3,8 +3,7 @@
 import logging
 from typing import Any
 
-from mcp.server.mcpserver import MCPServer
-
+from foxhole.tools.base import BaseToolProvider
 from foxhole.warapi import (
     DEFAULT_SHARD,
     ICON_CATEGORIES,
@@ -14,7 +13,7 @@ from foxhole.warapi import (
 logger = logging.getLogger(__name__)
 
 
-class WarApiTools:
+class WarApiTools(BaseToolProvider):
     """Encapsulates War API tools and their associated client."""
 
     def __init__(self, war_client: WarApiClient | None = None) -> None:
@@ -185,14 +184,6 @@ class WarApiTools:
         if not vt_status:
             return {"error": f"Failed to calculate victory town status for shard '{shard}."}
         return vt_status.model_dump()
-
-    def register(self, server: MCPServer) -> None:
-        """Register all War API tools with the given MCP server."""
-        server.add_tool(self.get_war_status)
-        server.add_tool(self.get_war_casualties)
-        server.add_tool(self.get_active_maps)
-        server.add_tool(self.get_map_intel)
-        server.add_tool(self.get_victory_town_status)
 
 
 # Default singleton instance for convenience

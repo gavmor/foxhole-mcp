@@ -1,5 +1,6 @@
 """Foxhole MCP tools modular components."""
 
+from foxhole.tools.base import BaseToolProvider
 from foxhole.tools.dispatches import (
     DispatchesTools,
     default_dispatches_tools,
@@ -51,6 +52,7 @@ DEFAULT_TOOL_PROVIDERS: tuple[
 
 __all__ = [
     "DEFAULT_TOOL_PROVIDERS",
+    "BaseToolProvider",
     "DispatchesTools",
     "ProductionTools",
     "WarApiTools",

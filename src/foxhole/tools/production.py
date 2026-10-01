@@ -15,6 +15,7 @@ from foxhole.parser import (
 )
 from foxhole.planner import plan_production as _plan_production
 from foxhole.telemetry import get_tracer
+from foxhole.tools.base import BaseToolProvider
 from foxhole.tools.wiki import default_wiki_tools
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def calculate_required_resources(
         return {"error": f"Internal error solving production demand: {e}"}
 
 
-class ProductionTools:
+class ProductionTools(BaseToolProvider):
     """Production and bill of materials tool provider."""
 
     def __init__(self, fetch_fn: Callable = default_fetch_recipes):
@@ -88,8 +89,8 @@ class ProductionTools:
 
     def register(self, server: MCPServer) -> None:
         """Register production planning and BOM tools with MCPServer."""
+        super().register(server)
         server.add_tool(calculate_required_resources)
-        server.add_tool(self.plan_production)
 
     async def plan_production(
         self,
