@@ -132,3 +132,20 @@ def solve_leontief(req: LeontiefRequest) -> dict[str, Any]:
         "net_export_rate": {req.items[i]: round(float(d[i]), 4) for i in range(n)},
         "machine_counts": machine_counts if machine_counts else None,
     }
+
+
+def solve_curried_economy(
+    demand: dict[str, float],
+    include_machine_counts: bool = False,
+    time_window_seconds: float | None = None,
+) -> dict[str, Any]:
+    """Solve the curried Foxhole Leontief economy matrix for arbitrary production demand."""
+    from foxhole.economy import get_economy_solver
+
+    solver = get_economy_solver()
+    plan = solver.solve(
+        demand=demand,
+        include_machine_counts=include_machine_counts,
+        time_window_seconds=time_window_seconds,
+    )
+    return plan.model_dump(exclude_none=True)

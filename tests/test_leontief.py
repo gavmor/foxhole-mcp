@@ -1,7 +1,5 @@
 """Unit tests for the Leontief input-output linear solver."""
 
-import json
-
 import pytest
 
 from foxhole.leontief import (
@@ -9,7 +7,6 @@ from foxhole.leontief import (
     MachineSpec,
     solve_leontief,
 )
-from foxhole.server import solve_leontief as mcp_solve_leontief
 
 
 def test_solve_leontief_exact_example():
@@ -99,21 +96,3 @@ def test_singular_matrix_error():
     )
     with pytest.raises(ValueError, match="Failed to invert Leontief matrix"):
         solve_leontief(req)
-
-
-def test_mcp_tool_wrapper():
-    """Test solve_leontief MCP server tool."""
-    res_str = mcp_solve_leontief(
-        items=["circuit", "wire", "plate"],
-        coefficients_matrix=[
-            [0.0, 0.0, 0.0],
-            [3.0, 0.0, 0.1],
-            [1.0, 0.0, 0.0],
-        ],
-        external_demand={"circuit": 10.0, "wire": 0.0, "plate": 5.0},
-        machines={"wire": MachineSpec(crafting_time=0.5, yield_per_craft=2.0, machine_speed=0.75)},
-    )
-    data = json.loads(res_str)
-    assert "gross_production_rate" in data
-    assert data["gross_production_rate"]["wire"] == 31.5
-    assert data["machine_counts"]["wire"]["integer_machines"] == 11

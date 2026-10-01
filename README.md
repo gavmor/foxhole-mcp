@@ -279,6 +279,38 @@ Below are three verified real-world examples demonstrating how an LLM agent answ
 
 ---
 
+### Example 4: Bill of Materials & Leontief Production (Bike-Mounted MG & Tanks)
+
+> **Officer Query:**  
+> *"Determine the total raw resources and intermediate facility parts needed for a bike-mounted machine gun."*
+
+#### 1. Why Currying Matrix $A$ is Necessary
+Generic Leontief tools expect the caller to formulate the ordered sector list, technical coefficients matrix $A$, and demand vector $d$. For natural language agents, this creates an impossible chicken-and-egg problem: the agent would need to already know all sub-recipes (Caster motorcycle, Construction Materials, Salvage ratios) and hand-craft an $N \times N$ matrix.
+
+By **currying the $N \times N$ Foxhole technical coefficients matrix $A$ at compile/startup time**, we precompute the Leontief multiplier matrix:
+$$L = (I - A)^{-1}$$
+The agent simply calls `calculate_required_resources({"bike-mounted machine gun": 1.0})`, and the server performs an instantaneous $O(N^2)$ dot product $x = L \cdot d$.
+
+#### 2. BOM Breakdown (`calculate_required_resources`, `foxhole resources`)
+
+```bash
+uv run foxhole resources "bike-mounted machine gun" --quantity 1 --machines
+```
+
+* **Resolved Entity:** **00MS “Stinger”** (Colonial 7.92mm MG Motorcycle).
+* **Raw Resources:**
+  * **Salvage:** **220.0 Salvage** (170 for 85 Bmats + 50 for 5 Cmats).
+* **Refined & Facility Materials:**
+  * **Basic Materials (Bmats):** 85.0 (for 03MM “Caster” chassis).
+  * **Construction Materials (Cmats):** 5.0 (for Small Assembly modification).
+* **Intermediate Production:**
+  * **03MM “Caster”:** 1.0 vehicle assembled at Garage.
+* **Required Facility Stations:**
+  * **Garage:** 1x base vehicle craft (30s).
+  * **Small Assembly Station:** 1x weapon upgrade (180s).
+
+---
+
 ## Project Structure
 
 ```text
@@ -286,22 +318,24 @@ foxhole/
 ├── pyproject.toml         # uv project configuration, dependencies & ruff rules
 ├── lefthook.yml           # Git hooks (ruff, ty, pytest)
 ├── mcp_config.json        # MCP server client configuration
-├── README.md              # Documentation
+├── README.md              # Documentation & Architecture
 ├── src/
 │   └── foxhole/
 │       ├── __init__.py    # Package exports
 │       ├── client.py      # Async MediaWiki client with TTL caching & user-agent
+│       ├── economy.py     # Precompiled Curried Leontief solver (A, L = (I-A)^-1)
 │       ├── models.py      # Pydantic data schemas (Vehicle, Item, Structure, Recipe)
 │       ├── parser.py      # wikitextparser template & structure extractor
-│       ├── server.py      # FastMCP server exposing Wiki tools & War API telemetry
-│       ├── leontief.py    # NumPy Leontief (I - A)x = d factory solver
-│       ├── cli.py         # Command-line interface for Wiki, War API & Leontief
+│       ├── server.py      # FastMCP server exposing Wiki tools, War API & BOM
+│       ├── leontief.py    # Base NumPy Leontief (I - A)x = d linear solver
+│       ├── cli.py         # Command-line interface for Wiki, War API, BOM & Leontief
 │       └── warapi/        # clapfoot/warapi integration
 │           ├── __init__.py
 │           ├── client.py  # Async War API client with ETag support
 │           ├── constants.py# Shards, Icon IDs (5..92), Map Flags
 │           └── models.py  # WarState, WarReport, MapItem, GlobalCasualties
 └── tests/
+    ├── test_economy.py    # Curried Leontief BOM & multiplier tests
     ├── test_parser.py     # Parser unit tests
     ├── test_server.py     # MCP tools integration tests
     ├── test_warapi.py     # War API unit & integration tests

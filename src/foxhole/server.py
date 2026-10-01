@@ -6,6 +6,7 @@ import logging
 from mcp.server.mcpserver import MCPServer
 
 from foxhole.client import FoxholeWikiClient
+from foxhole.economy import get_economy_solver
 from foxhole.leontief import (
     LeontiefRequest,
     MachineSpec,
@@ -13,12 +14,14 @@ from foxhole.leontief import (
 from foxhole.leontief import (
     solve_leontief as calculate_leontief,
 )
+from foxhole.models import ProductionRecipe
 from foxhole.parser import (
     parse_item,
     parse_page_content,
     parse_structure,
     parse_vehicle,
 )
+from foxhole.planner import plan_production as _plan_production
 from foxhole.warapi import (
     DEFAULT_SHARD,
     ICON_CATEGORIES,
@@ -457,6 +460,45 @@ async def get_victory_town_status(shard: str = DEFAULT_SHARD) -> str:
 
 
 @server.tool()
+def calculate_required_resources(
+    demand: dict[str, float],
+    include_machine_counts: bool = False,
+    time_window_seconds: float | None = None,
+) -> str:
+    """Calculate total raw resources, refined materials, intermediate components, and facility counts needed to produce any Foxhole vehicle, weapon, ammunition, or facility good.
+
+    Solves the curried Leontief input-output balance equation x = (I - A)^(-1) d at compile/initialization time.
+    Provides the complete Bill of Materials (BOM) down to primary resources (Salvage, Components, Sulfur, Coal, Crude Oil).
+
+    Use this tool whenever asked:
+    - 'Determine the total resources needed for a bike-mounted machine gun' (00MS "Stinger")
+    - 'What materials do I need to build 5 Spathas or Silverhand Chieftains?'
+    - 'How much scrap and components are needed for 20 crates of 40mm ammo?'
+    - 'Bill of materials for...' or 'Calculate production cost breakdown for...'
+
+    Supports common names and nicknames (e.g. 'bike-mounted machine gun', 'stinger', 'spatha', 'bmats', 'falchion', 'chieftain').
+
+    Args:
+        demand: Desired output goods and quantities {item_name_or_alias: quantity}
+        include_machine_counts: Whether to compute required physical assembly stations/factories
+        time_window_seconds: Time budget in seconds to produce the demand (default: 3600s / 1 hour if machine counts requested)
+    """
+    try:
+        solver = get_economy_solver()
+        plan = solver.solve(
+            demand=demand,
+            include_machine_counts=include_machine_counts,
+            time_window_seconds=time_window_seconds,
+        )
+        return json.dumps(plan.model_dump(exclude_none=True), indent=2)
+    except ValueError as e:
+        return json.dumps({"error": str(e)}, indent=2)
+    except Exception as e:
+        logger.exception("Failed to calculate required resources")
+        return json.dumps({"error": f"Internal error solving production demand: {e}"}, indent=2)
+
+
+@server.tool()
 def solve_leontief(
     items: list[str],
     coefficients_matrix: list[list[float]],
@@ -490,6 +532,58 @@ def solve_leontief(
             machines=machines,
         )
         result = calculate_leontief(req)
+        return json.dumps(result, indent=2)
+    except ValueError as e:
+        return json.dumps({"error": str(e)}, indent=2)
+
+
+async def _fetch_recipes(name: str) -> tuple[str, list[ProductionRecipe]] | None:
+    """Resolve a name to its wiki title and parsed production recipes."""
+    title = await _resolve_title(name)
+    data = await client.get_page_data(title)
+    if not data or not data.get("wikitext"):
+        return None
+    title, wikitext = data["title"], data["wikitext"]
+    for parse in (parse_vehicle, parse_item, parse_structure):
+        parsed = parse(title, wikitext)
+        if parsed and parsed.production:
+            return title, parsed.production
+    return title, []
+
+
+@server.tool()
+async def plan_production(
+    target: str,
+    quantity: float = 1,
+    recipe_overrides: dict[str, dict[str, float]] | None = None,
+    recipe_choice: dict[str, int] | None = None,
+) -> str:
+    """Compute the full bill of materials to produce any Foxhole vehicle, item, or structure.
+
+    Recursively pulls recipes from foxhole.wiki.gg, rolls up totals down to raw resources
+    (Salvage, Components, Sulfur, Coal, Oil, ...) with integer batch rounding, and reports
+    production steps, facility load, and alternative recipes. Feedback loops (e.g. mines
+    burning fuel refined from their own output) are solved with a Leontief fallback.
+
+    Use for questions like "how many bmats/salvage for 5 Dunnes?" or "full cost of 20 40mm".
+
+    Args:
+        target: Item name or alias (e.g. 'Dunne Transport', '40mm', 'Chieftain')
+        quantity: Number of units to produce (default: 1)
+        recipe_overrides: Replace recipes: {item: {input: qty per 1 output}}. Use {} to treat an
+            item as raw (e.g. {'Basic Materials': {}}), or override a raw resource to model
+            extraction (e.g. {'Salvage': {'Diesel': 0.111}}).
+        recipe_choice: Pick an alternative wiki recipe by index: {item: index}. Indices are
+            listed in the response's alternative_recipes.
+    """
+    try:
+        result = await _plan_production(
+            target,
+            quantity,
+            _fetch_recipes,
+            recipe_overrides=recipe_overrides,
+            recipe_choice=recipe_choice,
+        )
         return json.dumps(result, indent=2)
     except ValueError as e:
         return json.dumps({"error": str(e)}, indent=2)
@@ -541,16 +635,21 @@ def frontline_intel(map_name: str, shard: str = DEFAULT_SHARD) -> str:
 
 
 @server.prompt()
-def leontief_facility_planner(target_production: str) -> str:
-    """Prompt template for formulating and solving a multi-tier facility supply chain."""
-    return f"""Please formulate and solve the Leontief input-output balance equation for this facility goal:
-Target: {target_production}
+def production_planner(target: str, quantity: float = 1) -> str:
+    """Prompt template for planning a multi-tier production chain."""
+    return f"""Please plan production of {quantity}x '{target}' in Foxhole:
+1. Call `plan_production(target={target!r}, quantity={quantity})`.
+2. Report raw material totals and each production step with its facility and batch count.
+3. If `alternative_recipes` lists cheaper options (e.g. Metal Press, Smelter), re-run with `recipe_choice` and compare.
+4. Flag any `unresolved_inputs` and give hauling advice for the raw materials."""
 
-Steps:
-1. Identify all raw resources, intermediate components, and final products in the supply chain.
-2. Build the ordered list of items: items = [item_1, item_2, ...]
-3. Construct the technical coefficients matrix A where A[i][j] is the units of item i consumed to produce 1 unit of item j.
-4. Define the external net demand vector d.
-5. If machine cycle times are known, define machine specifications (crafting_time, yield_per_craft, machine_speed).
-6. Call `solve_leontief` with (items, coefficients_matrix, external_demand, machines) to compute gross rates, internal consumption, and exact facility counts.
-7. Interpret the results and check for any logistical bottlenecks."""
+
+@server.prompt()
+def bill_of_materials(item_or_vehicle: str, quantity: float = 1.0) -> str:
+    """Prompt template for calculating the full Leontief bill of materials and raw scrap requirements."""
+    return f"""Please compute the comprehensive bill of materials and logistical requirements for {quantity}x '{item_or_vehicle}':
+1. Call `calculate_required_resources(demand={{{item_or_vehicle!r}: {quantity}}}, include_machine_counts=True)` to solve the precompiled Leontief economy matrix.
+2. Report the primary raw resource totals (Salvage, Components, Sulfur, Crude Oil, Coal).
+3. Detail intermediate goods and facility modification stages (e.g. base vehicle chassis, PCmats, Assembly Materials).
+4. Review the physical machine and facility counts needed (Small Assembly Station, Garage, Refinery, Metalworks).
+5. Provide actionable logistics advice on hauling, refining, and crate packaging."""

@@ -207,43 +207,46 @@ async def run_victory(shard: str = DEFAULT_SHARD) -> None:
         await war_client.close()
 
 
-def run_leontief(
-    json_input: str | None = None,
-    file_path: str | None = None,
-    demo: bool = False,
+async def run_plan(
+    target: str,
+    quantity: float = 1.0,
+    overrides: str | None = None,
+    choice: str | None = None,
 ) -> None:
-    from foxhole.leontief import LeontiefRequest, MachineSpec, solve_leontief
+    from foxhole.server import client, plan_production
 
-    if demo:
-        req = LeontiefRequest(
-            items=["circuit", "wire", "plate"],
-            coefficients_matrix=[
-                [0.0, 0.0, 0.0],
-                [3.0, 0.0, 0.1],
-                [1.0, 0.0, 0.0],
-            ],
-            external_demand={"circuit": 10.0, "wire": 0.0, "plate": 5.0},
-            machines={
-                "wire": MachineSpec(crafting_time=0.5, yield_per_craft=2.0, machine_speed=0.75)
-            },
+    try:
+        print(
+            await plan_production(
+                target,
+                quantity,
+                recipe_overrides=json.loads(overrides) if overrides else None,
+                recipe_choice=json.loads(choice) if choice else None,
+            )
         )
-        print("--- Leontief Solver Demo (Circuits, Wire, Plates) ---")
-        result = solve_leontief(req)
-        print(_format_dict(result))
-        return
+    finally:
+        await client.close()
 
-    if file_path:
-        with open(file_path, encoding="utf-8") as f:
-            data = json.load(f)
-    elif json_input:
-        data = json.loads(json_input)
-    else:
-        print("Please provide --demo, --json '<json_str>', or a path to a JSON file.")
-        return
 
-    req = LeontiefRequest.model_validate(data)
-    result = solve_leontief(req)
-    print(_format_dict(result))
+def run_resources(
+    item_or_vehicle: str,
+    quantity: float = 1.0,
+    machines: bool = False,
+    time_window: float | None = None,
+) -> None:
+    from foxhole.economy import get_economy_solver
+
+    solver = get_economy_solver()
+    try:
+        plan = solver.solve(
+            demand={item_or_vehicle: quantity},
+            include_machine_counts=machines,
+            time_window_seconds=time_window,
+        )
+        print(_format_dict(plan.model_dump(exclude_none=True)))
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
@@ -314,14 +317,42 @@ def main() -> None:
     vic_parser = subparsers.add_parser("victory", help="Get victory town scores and requirements")
     vic_parser.add_argument("--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)")
 
-    # Leontief Factory Calculator
-    leontief_parser = subparsers.add_parser(
-        "leontief", help="Solve Leontief input-output production balance equation"
+    # Production Planner (BOM rollup over wiki recipes)
+    plan_parser = subparsers.add_parser(
+        "plan", help="Plan production: full bill of materials down to raw resources"
     )
-    leontief_parser.add_argument("file", nargs="?", help="Path to JSON file with LeontiefRequest")
-    leontief_parser.add_argument("--json", dest="json_str", help="JSON string of LeontiefRequest")
-    leontief_parser.add_argument(
-        "--demo", action="store_true", help="Run the circuits/wire/plates demonstration"
+    plan_parser.add_argument("target", help="Item, vehicle, or structure name")
+    plan_parser.add_argument(
+        "-q", "--quantity", type=float, default=1.0, help="Units to produce (default: 1)"
+    )
+    plan_parser.add_argument(
+        "--overrides", help="JSON recipe overrides, e.g. '{\"Basic Materials\": {}}'"
+    )
+    plan_parser.add_argument(
+        "--choice", help="JSON alternative recipe indices, e.g. '{\"Construction Materials\": 1}'"
+    )
+
+    # Curried Leontief Resources & BOM Calculator
+    res_parser = subparsers.add_parser(
+        "resources",
+        aliases=["bom", "calc"],
+        help="Calculate total required raw resources and BOM using curried Leontief matrix",
+    )
+    res_parser.add_argument(
+        "item",
+        help="Name or alias of item/vehicle (e.g. '00MS “Stinger”', 'bike-mounted machine gun', 'Spatha')",
+    )
+    res_parser.add_argument(
+        "-q", "--quantity", type=float, default=1.0, help="Target quantity (default: 1.0)"
+    )
+    res_parser.add_argument(
+        "-m",
+        "--machines",
+        action="store_true",
+        help="Calculate required facility buildings/stations",
+    )
+    res_parser.add_argument(
+        "-t", "--time", type=float, default=3600.0, help="Time budget in seconds (default: 3600s)"
     )
 
     args = parser.parse_args()
@@ -352,12 +383,15 @@ def main() -> None:
         asyncio.run(run_intel(args.map_name, args.category, args.shard))
     elif args.command == "victory":
         asyncio.run(run_victory(args.shard))
-    elif args.command == "leontief":
-        run_leontief(
-            json_input=getattr(args, "json_str", None),
-            file_path=getattr(args, "file", None),
-            demo=getattr(args, "demo", False),
+    elif args.command in ("resources", "bom", "calc"):
+        run_resources(
+            item_or_vehicle=args.item,
+            quantity=args.quantity,
+            machines=args.machines,
+            time_window=args.time,
         )
+    elif args.command == "plan":
+        asyncio.run(run_plan(args.target, args.quantity, args.overrides, args.choice))
     else:
         parser.print_help()
         sys.exit(1)

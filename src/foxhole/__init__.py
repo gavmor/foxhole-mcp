@@ -3,11 +3,19 @@
 __version__ = "0.2.0"
 
 from foxhole.client import FoxholeWikiClient
+from foxhole.economy import (
+    CurriedEconomySolver,
+    ItemCategory,
+    ItemDefinition,
+    ProductionPlan,
+    get_economy_solver,
+)
 from foxhole.leontief import (
     LeontiefRequest,
     LeontiefResponse,
     MachineCount,
     MachineSpec,
+    solve_curried_economy,
     solve_leontief,
 )
 from foxhole.models import (
@@ -19,6 +27,7 @@ from foxhole.models import (
     StructureStats,
     VehicleStats,
 )
+from foxhole.planner import plan_production
 from foxhole.server import server
 from foxhole.warapi import (
     DEFAULT_SHARD,
@@ -43,8 +52,11 @@ __all__ = [
     "MAP_ICON_NAMES",
     "SHARDS",
     "Armament",
+    "CurriedEconomySolver",
     "FoxholeWikiClient",
     "GlobalCasualties",
+    "ItemCategory",
+    "ItemDefinition",
     "ItemStats",
     "LeontiefRequest",
     "LeontiefResponse",
@@ -55,6 +67,7 @@ __all__ = [
     "MapItem",
     "MapTextItem",
     "PageContent",
+    "ProductionPlan",
     "ProductionRecipe",
     "SearchResult",
     "StructureStats",
@@ -64,7 +77,10 @@ __all__ = [
     "WarReport",
     "WarState",
     "__version__",
+    "get_economy_solver",
     "get_icon_name",
+    "plan_production",
     "server",
+    "solve_curried_economy",
     "solve_leontief",
 ]
