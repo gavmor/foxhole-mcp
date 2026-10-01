@@ -8,7 +8,6 @@ from foxhole.prompts import (
     bill_of_materials,
     combat_intel,
     frontline_intel,
-    leontief_facility_planner,
     logistics_plan,
     production_planner,
     register_prompts,
@@ -19,7 +18,6 @@ from foxhole.tools.production import (
     default_fetch_recipes,
     plan_production,
     register_production_tools,
-    solve_leontief,
 )
 from foxhole.tools.warapi import (
     WarApiTools,
@@ -94,13 +92,11 @@ __all__ = [
     "get_victory_town_status",
     "get_war_casualties",
     "get_war_status",
-    "leontief_facility_planner",
     "logistics_plan",
     "plan_production",
     "production_planner",
     "search_foxhole_wiki",
     "server",
-    "solve_leontief",
     "strategic_war_overview",
     "war_client",
 ]

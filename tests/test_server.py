@@ -26,7 +26,7 @@ async def test_mcp_server_registration():
     assert "get_page_overview" in tool_names
     assert "plan_production" in tool_names
     assert "calculate_required_resources" in tool_names
-    assert "solve_leontief" in tool_names
+    assert "solve_leontief" not in tool_names
 
     prompts = await server.list_prompts()
     prompt_names = [p.name for p in prompts]
@@ -34,6 +34,7 @@ async def test_mcp_server_registration():
     assert "logistics_plan" in prompt_names
     assert "production_planner" in prompt_names
     assert "bill_of_materials" in prompt_names
+    assert "leontief_facility_planner" not in prompt_names
 
 
 @pytest.mark.asyncio
@@ -113,7 +114,7 @@ async def test_create_server_custom_components():
     tool_names = [t.name for t in tools]
     assert "search_foxhole_wiki" in tool_names
     assert "get_active_maps" in tool_names
-    assert "solve_leontief" in tool_names
+    assert "plan_production" in tool_names
 
     # Test invoking with mocked war client
     res = await custom_war.get_active_maps()
