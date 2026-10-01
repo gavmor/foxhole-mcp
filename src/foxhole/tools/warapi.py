@@ -211,9 +211,14 @@ class WarApiTools:
 # Default singleton instance for convenience
 default_war_tools = WarApiTools()
 
-# Module-level tool callables delegating to default instance
-get_war_status = default_war_tools.get_war_status
-get_war_casualties = default_war_tools.get_war_casualties
-get_active_maps = default_war_tools.get_active_maps
-get_map_intel = default_war_tools.get_map_intel
-get_victory_town_status = default_war_tools.get_victory_town_status
+
+def __getattr__(name: str):
+    """PEP 562: delegate attribute access to the default singleton instance."""
+    return getattr(default_war_tools, name)
+
+
+def __dir__():
+    """PEP 562: return dir of the default singleton instance merged with module attributes."""
+    attrs = set(globals().keys())
+    attrs.update(dir(default_war_tools))
+    return sorted(attrs)

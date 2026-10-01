@@ -361,5 +361,14 @@ DATELINE: THERIZO REVOLUTIONARY ASSEMBLY PRESS BUREAU —"""
 
 default_dispatches_tools = DispatchesTools()
 
-get_flash_dispatch = default_dispatches_tools.get_flash_dispatch
-get_propaganda_wire = default_dispatches_tools.get_propaganda_wire
+
+def __getattr__(name: str):
+    """PEP 562: delegate attribute access to the default singleton instance."""
+    return getattr(default_dispatches_tools, name)
+
+
+def __dir__():
+    """PEP 562: return dir of the default singleton instance merged with module attributes."""
+    attrs = set(globals().keys())
+    attrs.update(dir(default_dispatches_tools))
+    return sorted(attrs)

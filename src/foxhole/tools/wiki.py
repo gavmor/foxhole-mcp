@@ -358,26 +358,14 @@ class WikiTools:
 # Default singleton instance for convenience
 default_wiki_tools = WikiTools()
 
-# Module-level tool callables delegating to default instance
-_resolve_title = default_wiki_tools.resolve_title
-resolve_title = default_wiki_tools.resolve_title
-search_foxhole_wiki = default_wiki_tools.search_foxhole_wiki
-get_vehicle_stats = default_wiki_tools.get_vehicle_stats
-get_item_stats = default_wiki_tools.get_item_stats
-get_structure_stats = default_wiki_tools.get_structure_stats
-get_production_cost = default_wiki_tools.get_production_cost
-get_page_overview = default_wiki_tools.get_page_overview
-edit_wiki_page = default_wiki_tools.edit_wiki_page
 
-__all__ = [
-    "WikiTools",
-    "default_wiki_tools",
-    "edit_wiki_page",
-    "get_item_stats",
-    "get_page_overview",
-    "get_production_cost",
-    "get_structure_stats",
-    "get_vehicle_stats",
-    "resolve_title",
-    "search_foxhole_wiki",
-]
+def __getattr__(name: str):
+    """PEP 562: delegate attribute access to the default singleton instance."""
+    return getattr(default_wiki_tools, name)
+
+
+def __dir__():
+    """PEP 562: return dir of the default singleton instance merged with module attributes."""
+    attrs = set(globals().keys())
+    attrs.update(dir(default_wiki_tools))
+    return sorted(attrs)
