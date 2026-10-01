@@ -2,7 +2,12 @@
 
 __version__ = "0.2.0"
 
-from foxhole.client import FoxholeWikiClient
+from foxhole.client import (
+    FoxholeWikiClient,
+    WikiAuthenticationError,
+    WikiEditError,
+    WikiError,
+)
 from foxhole.economy import (
     CurriedEconomySolver,
     ItemCategory,
@@ -26,9 +31,11 @@ from foxhole.models import (
     SearchResult,
     StructureStats,
     VehicleStats,
+    WikiEditResult,
 )
 from foxhole.planner import plan_production
 from foxhole.server import create_server, server
+from foxhole.tools.wiki import edit_wiki_page
 from foxhole.warapi import (
     DEFAULT_SHARD,
     ICON_CATEGORIES,
@@ -76,8 +83,13 @@ __all__ = [
     "WarApiClient",
     "WarReport",
     "WarState",
+    "WikiAuthenticationError",
+    "WikiEditError",
+    "WikiEditResult",
+    "WikiError",
     "__version__",
     "create_server",
+    "edit_wiki_page",
     "get_economy_solver",
     "get_icon_name",
     "plan_production",

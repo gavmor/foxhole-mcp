@@ -13,6 +13,12 @@ from foxhole.prompts import (
     register_prompts,
     strategic_war_overview,
 )
+from foxhole.tools.dispatches import (
+    DispatchesTools,
+    default_dispatches_tools,
+    get_flash_dispatch,
+    get_propaganda_wire,
+)
 from foxhole.tools.production import (
     calculate_required_resources,
     default_fetch_recipes,
@@ -31,6 +37,7 @@ from foxhole.tools.warapi import (
 from foxhole.tools.wiki import (
     WikiTools,
     default_wiki_tools,
+    edit_wiki_page,
     get_item_stats,
     get_page_overview,
     get_production_cost,
@@ -48,6 +55,7 @@ def create_server(
     version: str = "0.2.0",
     wiki_tools: WikiTools | None = None,
     war_tools: WarApiTools | None = None,
+    dispatches_tools: DispatchesTools | None = None,
 ) -> MCPServer:
     """Create and configure a Foxhole MCPServer instance with all tools and prompts."""
     mcp_server = MCPServer(
@@ -58,6 +66,7 @@ def create_server(
 
     (wiki_tools or default_wiki_tools).register(mcp_server)
     (war_tools or default_war_tools).register(mcp_server)
+    (dispatches_tools or default_dispatches_tools).register(mcp_server)
     register_production_tools(mcp_server)
     register_prompts(mcp_server)
 
@@ -81,12 +90,15 @@ __all__ = [
     "client",
     "combat_intel",
     "create_server",
+    "edit_wiki_page",
     "frontline_intel",
     "get_active_maps",
+    "get_flash_dispatch",
     "get_item_stats",
     "get_map_intel",
     "get_page_overview",
     "get_production_cost",
+    "get_propaganda_wire",
     "get_structure_stats",
     "get_vehicle_stats",
     "get_victory_town_status",

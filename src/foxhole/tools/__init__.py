@@ -1,5 +1,11 @@
 """Foxhole MCP tools modular components."""
 
+from foxhole.tools.dispatches import (
+    DispatchesTools,
+    default_dispatches_tools,
+    get_flash_dispatch,
+    get_propaganda_wire,
+)
 from foxhole.tools.production import (
     calculate_required_resources,
     default_fetch_recipes,
@@ -18,6 +24,7 @@ from foxhole.tools.warapi import (
 from foxhole.tools.wiki import (
     WikiTools,
     default_wiki_tools,
+    edit_wiki_page,
     get_item_stats,
     get_page_overview,
     get_production_cost,
@@ -28,17 +35,22 @@ from foxhole.tools.wiki import (
 )
 
 __all__ = [
+    "DispatchesTools",
     "WarApiTools",
     "WikiTools",
     "calculate_required_resources",
+    "default_dispatches_tools",
     "default_fetch_recipes",
     "default_war_tools",
     "default_wiki_tools",
+    "edit_wiki_page",
     "get_active_maps",
+    "get_flash_dispatch",
     "get_item_stats",
     "get_map_intel",
     "get_page_overview",
     "get_production_cost",
+    "get_propaganda_wire",
     "get_structure_stats",
     "get_vehicle_stats",
     "get_victory_town_status",

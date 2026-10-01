@@ -24,6 +24,7 @@ async def test_mcp_server_registration():
     assert "get_structure_stats" in tool_names
     assert "get_production_cost" in tool_names
     assert "get_page_overview" in tool_names
+    assert "edit_wiki_page" in tool_names
     assert "plan_production" in tool_names
     assert "calculate_required_resources" in tool_names
     assert "solve_leontief" not in tool_names
@@ -113,6 +114,7 @@ async def test_create_server_custom_components():
     tools = await custom_server.list_tools()
     tool_names = [t.name for t in tools]
     assert "search_foxhole_wiki" in tool_names
+    assert "edit_wiki_page" in tool_names
     assert "get_active_maps" in tool_names
     assert "plan_production" in tool_names
 
