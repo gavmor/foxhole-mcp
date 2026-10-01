@@ -102,6 +102,30 @@ async def run_page(title: str) -> None:
         await client.close()
 
 
+async def run_edit(
+    title: str,
+    content: str,
+    summary: str = "Edited via Foxhole CLI",
+    section: str | None = None,
+    minor: bool = False,
+    bot: bool = False,
+) -> None:
+    from foxhole.tools.wiki import default_wiki_tools
+
+    try:
+        res = await default_wiki_tools.edit_wiki_page(
+            title=title,
+            content=content,
+            summary=summary,
+            section=section,
+            minor=minor,
+            bot=bot,
+        )
+        print(res)
+    finally:
+        await default_wiki_tools.close()
+
+
 # ---------------------------------------------------------------------------
 # War API CLI Actions
 # ---------------------------------------------------------------------------
@@ -329,6 +353,20 @@ def main() -> None:
     page_parser = subparsers.add_parser("page", help="Get clean text and overview of a wiki page")
     page_parser.add_argument("title", help="Page title")
 
+    edit_parser = subparsers.add_parser(
+        "edit", help="Create or edit a wiki page on foxhole.wiki.gg"
+    )
+    edit_parser.add_argument("title", help="Page title")
+    edit_parser.add_argument("content", help="Wikitext content to write")
+    edit_parser.add_argument(
+        "-s", "--summary", default="Edited via Foxhole CLI", help="Edit summary"
+    )
+    edit_parser.add_argument(
+        "--section", default=None, help="Section name or number ('new' to append)"
+    )
+    edit_parser.add_argument("--minor", action="store_true", help="Mark edit as minor")
+    edit_parser.add_argument("--bot", action="store_true", help="Mark edit as bot")
+
     # War API Commands
     war_parser = subparsers.add_parser("war", help="Get current World Conquest status")
     war_parser.add_argument("--shard", default=DEFAULT_SHARD, help="Target shard (default: live-1)")
@@ -415,6 +453,17 @@ def main() -> None:
         asyncio.run(run_structure(args.name))
     elif args.command == "page":
         asyncio.run(run_page(args.title))
+    elif args.command == "edit":
+        asyncio.run(
+            run_edit(
+                title=args.title,
+                content=args.content,
+                summary=args.summary,
+                section=args.section,
+                minor=args.minor,
+                bot=args.bot,
+            )
+        )
     elif args.command == "war":
         asyncio.run(run_war_status(args.shard))
     elif args.command == "casualties":

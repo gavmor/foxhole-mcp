@@ -189,3 +189,17 @@ class PageContent(BaseModel):
         default_factory=dict, description="Clean markdown/text by section header"
     )
     wiki_url: str = Field(description="Direct URL to the article on foxhole.wiki.gg")
+
+
+class WikiEditResult(BaseModel):
+    """Result of a MediaWiki page edit or creation operation."""
+
+    result: str = Field(description="Result status, typically 'Success'")
+    title: str = Field(description="Title of the edited page")
+    pageid: int | None = Field(default=None, description="MediaWiki internal page ID")
+    nochange: bool = Field(default=False, description="Whether the edit resulted in no change")
+    oldrevid: int | None = Field(default=None, description="Previous revision ID if modified")
+    newrevid: int | None = Field(default=None, description="New revision ID if modified")
+    newtimestamp: str | None = Field(default=None, description="Timestamp of the new revision")
+    contentmodel: str | None = Field(default=None, description="Content model (e.g., wikitext)")
+    url: str | None = Field(default=None, description="Direct URL to the edited wiki page")

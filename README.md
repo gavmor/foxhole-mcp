@@ -116,6 +116,13 @@ uv run foxhole mcp --transport sse --port 8000
 4. `get_structure_stats(structure_name: str)`: Return structure HP, decay duration, repair cost, and defenses.
 5. `get_production_cost(name: str)`: Extract exact manufacturing requirements, cycle times, and facility sources.
 6. `get_page_overview(title: str)`: Return a clean text overview of any page without wiki markup.
+7. `edit_wiki_page(title: str, content: str, summary: str = ..., section: str | None = None, minor: bool = False, bot: bool = False, createonly: bool = False, nocreate: bool = False)`: Create or edit pages via MediaWiki `action=edit` API with automatic CSRF token negotiation, session auth, retry on token expiration, and cache invalidation.
+
+#### MediaWiki Authentication
+Read operations require no authentication. For writing or editing pages with `edit_wiki_page`:
+- `FOXHOLE_WIKI_USERNAME` (or `MEDIAWIKI_USERNAME`): Account username or Bot Password identifier (`User@BotName`).
+- `FOXHOLE_WIKI_PASSWORD` (or `MEDIAWIKI_PASSWORD`): Account password or Bot Password secret.
+
 
 ### War API Telemetry Tools ([`clapfoot/warapi`](https://github.com/clapfoot/warapi))
 1. `get_war_status(shard: str = "live-1")`: Query live World Conquest status, war number, active winner, and victory town requirements.
@@ -438,4 +445,3 @@ foxhole/
     ├── test_warapi.py     # War API unit & integration tests
     └── test_leontief.py   # Leontief solver unit tests
 ```
-// weave: run 'weave explain README.md' for per-hunk detail, 'weave check' to verify your resolution

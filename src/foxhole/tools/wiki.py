@@ -5,7 +5,12 @@ import logging
 
 from mcp.server.mcpserver import MCPServer
 
-from foxhole.client import FoxholeWikiClient
+from foxhole.client import (
+    FoxholeWikiClient,
+    WikiAuthenticationError,
+    WikiEditError,
+)
+from foxhole.models import WikiEditResult
 from foxhole.parser import (
     parse_item,
     parse_page_content,
@@ -248,6 +253,97 @@ class WikiTools:
         content = parse_page_content(data["title"], data["wikitext"])
         return json.dumps(content.model_dump(exclude_none=True), indent=2)
 
+    async def edit_wiki_page(
+        self,
+        title: str,
+        content: str,
+        summary: str = "Edited via Foxhole MCP",
+        section: str | None = None,
+        minor: bool = False,
+        bot: bool = False,
+        createonly: bool = False,
+        nocreate: bool = False,
+    ) -> str:
+        """Create or edit a page on foxhole.wiki.gg using the MediaWiki action=edit API.
+
+        Requires wiki authentication credentials (set FOXHOLE_WIKI_USERNAME and
+        FOXHOLE_WIKI_PASSWORD environment variables or configure bot credentials).
+        Automatically handles CSRF token negotiation, refresh on expiry, and cache
+        invalidation.
+
+        Args:
+            title: Title of the wiki page to create or edit (e.g. 'Logistics', 'User:MyBot/Sandbox')
+            content: Wikitext content to write to the page or specified section
+            summary: Edit summary explaining the change (default: 'Edited via Foxhole MCP')
+            section: Optional section identifier ('new' to append a new section, or integer section index)
+            minor: Whether to mark the edit as minor (default: False)
+            bot: Whether to mark the edit as a bot edit (default: False)
+            createonly: Only create the page; fails if page already exists (default: False)
+            nocreate: Only edit existing page; fails if page does not exist (default: False)
+        """
+        try:
+            sec = section if section != "" else None
+            edit_data = await self.client.edit(
+                title=title,
+                text=content,
+                summary=summary,
+                section=sec,
+                minor=minor,
+                bot=bot,
+                createonly=createonly,
+                nocreate=nocreate,
+            )
+
+            is_nochange = "nochange" in edit_data or bool(edit_data.get("nochange"))
+            page_title = edit_data.get("title", title)
+            slug = page_title.replace(" ", "_")
+            wiki_url = f"https://foxhole.wiki.gg/wiki/{slug}"
+
+            res = WikiEditResult(
+                result=edit_data.get("result", "Success"),
+                title=page_title,
+                pageid=edit_data.get("pageid"),
+                nochange=is_nochange,
+                oldrevid=edit_data.get("oldrevid"),
+                newrevid=edit_data.get("newrevid"),
+                newtimestamp=edit_data.get("newtimestamp"),
+                contentmodel=edit_data.get("contentmodel"),
+                url=wiki_url,
+            )
+            return json.dumps(res.model_dump(exclude_none=True), indent=2)
+        except WikiAuthenticationError as e:
+            logger.error("Authentication error editing '%s': %s", title, e)
+            return json.dumps(
+                {
+                    "error": str(e),
+                    "title": title,
+                    "type": "authentication_error",
+                },
+                indent=2,
+            )
+        except WikiEditError as e:
+            logger.error("MediaWiki edit error on '%s': [%s] %s", title, e.code, e.info)
+            return json.dumps(
+                {
+                    "error": str(e),
+                    "code": e.code,
+                    "info": e.info,
+                    "title": title,
+                    "type": "edit_error",
+                },
+                indent=2,
+            )
+        except Exception as e:
+            logger.error("Unexpected error editing '%s': %s", title, e)
+            return json.dumps(
+                {
+                    "error": f"Failed to edit wiki page: {e}",
+                    "title": title,
+                    "type": "unexpected_error",
+                },
+                indent=2,
+            )
+
     def register(self, server: MCPServer) -> None:
         """Register all wiki tools with the given MCP server."""
         server.add_tool(self.search_foxhole_wiki)
@@ -256,6 +352,7 @@ class WikiTools:
         server.add_tool(self.get_structure_stats)
         server.add_tool(self.get_production_cost)
         server.add_tool(self.get_page_overview)
+        server.add_tool(self.edit_wiki_page)
 
 
 # Default singleton instance for convenience
@@ -270,3 +367,17 @@ get_item_stats = default_wiki_tools.get_item_stats
 get_structure_stats = default_wiki_tools.get_structure_stats
 get_production_cost = default_wiki_tools.get_production_cost
 get_page_overview = default_wiki_tools.get_page_overview
+edit_wiki_page = default_wiki_tools.edit_wiki_page
+
+__all__ = [
+    "WikiTools",
+    "default_wiki_tools",
+    "edit_wiki_page",
+    "get_item_stats",
+    "get_page_overview",
+    "get_production_cost",
+    "get_structure_stats",
+    "get_vehicle_stats",
+    "resolve_title",
+    "search_foxhole_wiki",
+]
