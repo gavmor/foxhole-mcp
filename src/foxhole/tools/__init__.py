@@ -5,7 +5,6 @@ from foxhole.tools.production import (
     default_fetch_recipes,
     plan_production,
     register_production_tools,
-    solve_leontief,
 )
 from foxhole.tools.warapi import (
     WarApiTools,
@@ -49,5 +48,4 @@ __all__ = [
     "register_production_tools",
     "resolve_title",
     "search_foxhole_wiki",
-    "solve_leontief",
 ]

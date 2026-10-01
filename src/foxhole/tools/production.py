@@ -1,4 +1,4 @@
-"""MCP tools for Foxhole production planning, Leontief matrix solvers, and Bill of Materials."""
+"""MCP tools for Foxhole production planning and Bill of Materials."""
 
 import json
 import logging
@@ -6,13 +6,6 @@ import logging
 from mcp.server.mcpserver import MCPServer
 
 from foxhole.economy import get_economy_solver
-from foxhole.leontief import (
-    LeontiefRequest,
-    MachineSpec,
-)
-from foxhole.leontief import (
-    solve_leontief as calculate_leontief,
-)
 from foxhole.models import ProductionRecipe
 from foxhole.parser import (
     parse_item,
@@ -77,44 +70,6 @@ def calculate_required_resources(
         return json.dumps({"error": f"Internal error solving production demand: {e}"}, indent=2)
 
 
-def solve_leontief(
-    items: list[str],
-    coefficients_matrix: list[list[float]],
-    external_demand: dict[str, float],
-    machines: dict[str, MachineSpec] | None = None,
-) -> str:
-    """Solve the Leontief balance equation (I - A)x = d for gross production rates and machine counts.
-
-    Solves the linear input-output economic model using NumPy (np.linalg.solve(I - A, d)).
-    Computes gross production rates (x) required to satisfy target net output (d) while
-    accounting for internal recipe consumption loops (c = Ax). Optionally calculates
-    exact fractional and integer machine counts (N = x*t / (y*s)).
-
-    Guards against:
-    - Matrix dimension mismatches
-    - Missing demand items
-    - Singular loops (LinAlgError)
-    - Hawkins-Simon condition violations (negative production indicating impossible loops)
-
-    Args:
-        items: Ordered list of item names, e.g. ['circuit', 'wire', 'plate']
-        coefficients_matrix: Matrix A where A[i][j] is unit amount of item i needed to produce 1 unit of item j
-        external_demand: Desired net export rate per second {item: demand_rate}
-        machines: Optional machine specs per item {item: {crafting_time, yield_per_craft, machine_speed}}
-    """
-    try:
-        req = LeontiefRequest(
-            items=items,
-            coefficients_matrix=coefficients_matrix,
-            external_demand=external_demand,
-            machines=machines,
-        )
-        result = calculate_leontief(req)
-        return json.dumps(result, indent=2)
-    except ValueError as e:
-        return json.dumps({"error": str(e)}, indent=2)
-
-
 async def plan_production(
     target: str,
     quantity: float = 1,
@@ -161,7 +116,6 @@ async def plan_production(
 
 
 def register_production_tools(server: MCPServer) -> None:
-    """Register production planning, Leontief solver, and BOM tools with MCPServer."""
+    """Register production planning and BOM tools with MCPServer."""
     server.add_tool(calculate_required_resources)
     server.add_tool(plan_production)
-    server.add_tool(solve_leontief)

@@ -60,21 +60,6 @@ def bill_of_materials(item_or_vehicle: str, quantity: float = 1.0) -> str:
 5. Provide actionable logistics advice on hauling, refining, and crate packaging."""
 
 
-def leontief_facility_planner(target_production: str) -> str:
-    """Prompt template for formulating and solving a multi-tier facility supply chain."""
-    return f"""Please formulate and solve the Leontief input-output balance equation for this facility goal:
-Target: {target_production}
-
-Steps:
-1. Identify all raw resources, intermediate components, and final products in the supply chain.
-2. Build the ordered list of items: items = [item_1, item_2, ...]
-3. Construct the technical coefficients matrix A where A[i][j] is the units of item i consumed to produce 1 unit of item j.
-4. Define the external net demand vector d.
-5. If machine cycle times are known, define machine specifications (crafting_time, yield_per_craft, machine_speed).
-6. Call `solve_leontief` with (items, coefficients_matrix, external_demand, machines) to compute gross rates, internal consumption, and exact facility counts.
-7. Interpret the results and check for any logistical bottlenecks."""
-
-
 def register_prompts(server: MCPServer) -> None:
     """Register all prompt templates with the given MCP server."""
     server.prompt()(combat_intel)
@@ -83,4 +68,3 @@ def register_prompts(server: MCPServer) -> None:
     server.prompt()(frontline_intel)
     server.prompt()(production_planner)
     server.prompt()(bill_of_materials)
-    server.prompt()(leontief_facility_planner)

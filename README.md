@@ -124,15 +124,17 @@ uv run foxhole mcp --transport sse --port 8000
 4. `get_map_intel(map_name: str, filter_category: str | None = None, shard: str = "live-1")`: Retrieve base control, victory points, logistics assets, and resource fields for any hex.
 5. `get_victory_town_status(shard: str = "live-1")`: Compute global victory town scores (Wardens vs Colonials) and scorched town deductions.
 
-### Factory Optimization Tools (NumPy Leontief Solver)
-1. `solve_leontief(items, coefficients_matrix, external_demand, machines)`: Solves the linear production balance equation $(I - A)x = d$ using `np.linalg.solve(I - A, d)`. Calculates gross rates ($x$), internal consumption ($c = Ax$), and physical building counts ($N = \frac{xt}{ys}$) with Hawkins-Simon viability checks.
+### Production Planning Tools
+1. `plan_production(target, quantity, recipe_overrides, recipe_choice)`: Full bill of materials from live wiki recipes. Rolls up a DAG in topological order with integer batch rounding, reports production steps, facility load, and alternative recipes; falls back to the Leontief solve $x = (I - A)^{-1}d$ only when the recipe graph has a feedback loop.
+2. `calculate_required_resources(demand, include_machine_counts, time_window_seconds)`: BOM from the precompiled economy registry.
 
 ### Prompts
 1. `combat_intel(vehicle_or_weapon: str)`: In-depth combat evaluation, penetration analysis, and counter-tactics.
 2. `logistics_plan(item_name: str, requested_amount: int)`: Compute crate counts, material costs, and delivery plans.
 3. `strategic_war_overview(shard: str = "live-1")`: Synthesize high-level war situation report across all fronts.
 4. `frontline_intel(map_name: str, shard: str = "live-1")`: Generate operational sector briefing for a specific frontline hex.
-5. `leontief_facility_planner(target_production: str)`: Formulate and solve multi-tier industrial facility chains.
+5. `production_planner(target: str, quantity: float)`: Plan a multi-tier production chain with `plan_production`.
+6. `bill_of_materials(item_or_vehicle: str, quantity: float)`: BOM via `calculate_required_resources`.
 
 ---
 
@@ -178,13 +180,10 @@ uv run foxhole structure "Storm Cannon"
 # Clean page text
 uv run foxhole page "Artillery"
 
-# --- Leontief Factory Calculator ---
-# Run circuits / wire / plate demonstration
-uv run foxhole leontief --demo
-
-# Solve custom facility plan from file or string
-uv run foxhole leontief plan.json
-uv run foxhole leontief --json '{"items": ["fuel", "oil"], "coefficients_matrix": [[0, 2], [0, 0]], "external_demand": {"fuel": 10}}'
+# --- Production Planner ---
+uv run foxhole plan "Silverhand Chieftain - Mk. VI" -q 2
+uv run foxhole plan "Construction Materials" -q 30 --choice '{"Construction Materials": 1}'
+uv run foxhole plan "Dunne Transport" --overrides '{"Basic Materials": {}}'
 ```
 
 ---
@@ -330,12 +329,12 @@ foxhole/
 │       ├── prompts.py     # MCP prompt templates (combat, logistics, war briefing, BOM)
 │       ├── leontief.py    # Base NumPy Leontief (I - A)x = d linear solver
 │       ├── planner.py     # Dynamic recursive wiki production planner
-│       ├── cli.py         # Command-line interface for Wiki, War API, BOM & Leontief
+│       ├── cli.py         # Command-line interface for Wiki, War API, BOM & planner
 │       ├── tools/         # Modular MCP tool components
 │       │   ├── __init__.py
 │       │   ├── wiki.py    # MediaWiki tools component (WikiTools)
 │       │   ├── warapi.py  # War API telemetry component (WarApiTools)
-│       │   └── production.py # Production planning, Leontief & BOM tools
+│       │   └── production.py # Production planning & BOM tools
 │       └── warapi/        # clapfoot/warapi integration
 │           ├── __init__.py
 │           ├── client.py  # Async War API client with ETag support
