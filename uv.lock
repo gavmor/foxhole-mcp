@@ -229,6 +229,11 @@ dependencies = [
     { name = "wikitextparser" },
 ]
 
+[package.optional-dependencies]
+stockpiles = [
+    { name = "fs-sav" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
@@ -239,6 +244,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fs-sav", marker = "extra == 'stockpiles'", specifier = ">=0.3.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mcp", specifier = ">=1.0.0" },
     { name = "numpy", specifier = ">=2.5.3" },
@@ -249,6 +255,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "wikitextparser", specifier = ">=2.0.0" },
 ]
+provides-extras = ["stockpiles"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -256,6 +263,19 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
     { name = "ruff", specifier = ">=0.9.0" },
     { name = "ty", specifier = ">=0.0.84" },
+]
+
+[[package]]
+name = "fs-sav"
+version = "0.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b8/54/418e9ddf2794c33b98806239eaf8bc17f787592edab24e2563a127dc6f5b/fs_sav-0.3.0.tar.gz", hash = "sha256:ea07f2b86af95725af39b8bca5c17040f57a5e837d96422c1bd49c3ccdc02c53", size = 38503, upload-time = "2026-06-24T16:39:06.984Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3f/cc/119a4be04a495dcb4545d7b8e4e589ba3146ff600a72387439c8d2e2601a/fs_sav-0.3.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:87d5ca7a732fbccc40236ea28488868ee147dff6a82c210e23a4adc04b1e68a4", size = 637973, upload-time = "2026-06-24T16:38:59.368Z" },
+    { url = "https://files.pythonhosted.org/packages/16/3f/add2a24b6ae61207363d5bfa845a832ce1cf18415982bf5e0d5a2b14d4c5/fs_sav-0.3.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9752bb6533fb14d4d0a2e012f4093669eb46be03ab5ac4eca19ab93da5e4acb3", size = 610999, upload-time = "2026-06-24T16:39:01.05Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/39/be61a3c6452d368d2908b395914f722934749300d545b74e74f37535e484/fs_sav-0.3.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:50ad69f8b85b4fdd33a7ae46293a87a3f68a41e98013b84a0690586229242772", size = 675803, upload-time = "2026-06-24T16:39:02.555Z" },
+    { url = "https://files.pythonhosted.org/packages/1a/4b/5dfb0116ad15e97a11f4cd41acbc5146fe1fa5ab40538428758055afab00/fs_sav-0.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:2de9357ea01438a85681146cfe290c8e67801a20701dcb6e00af48c4bda27da5", size = 703017, upload-time = "2026-06-24T16:39:04.246Z" },
+    { url = "https://files.pythonhosted.org/packages/af/f4/8ff13b65bd4e3d00c3e62f1ea18ee2cf220484a815096ad5039dba16d10a/fs_sav-0.3.0-cp310-abi3-win_amd64.whl", hash = "sha256:cf84ff17897798e770ddfeaf6c657c9bda8dc980cd830a5f66fb4120834eae70", size = 655592, upload-time = "2026-06-24T16:39:05.716Z" },
 ]
 
 [[package]]

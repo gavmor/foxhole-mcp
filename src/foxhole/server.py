@@ -12,6 +12,7 @@ from foxhole.tools import (
     DEFAULT_TOOL_PROVIDERS,
     default_dispatches_tools,
     default_production_tools,
+    default_stockpile_tools,
     default_war_tools,
     default_wiki_tools,
 )
@@ -71,8 +72,9 @@ def create_server(
         war = legacy_kwargs.get("war_tools", default_war_tools)
         dispatches = legacy_kwargs.get("dispatches_tools", default_dispatches_tools)
         production = legacy_kwargs.get("production_tools", default_production_tools)
+        stockpile = legacy_kwargs.get("stockpile_tools", default_stockpile_tools)
         prompts = legacy_kwargs.get("prompt_registry", register_prompts)
-        active_extensions = [wiki, war, dispatches, production, prompts]
+        active_extensions = [wiki, war, dispatches, production, stockpile, prompts]
 
     for ext in active_extensions:
         if isinstance(ext, MCPServer):

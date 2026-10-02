@@ -949,6 +949,10 @@ class ProductionPlan(BaseModel):
         default=None,
         description="Whole crates needed for each demanded item that is produced in crates",
     )
+    inventory_used: dict[str, float] | None = Field(
+        default=None,
+        description="Units drawn from the supplied inventory instead of being produced",
+    )
     summary: str = Field(description="Human-readable executive summary of the bill of materials")
 
 
@@ -1098,12 +1102,37 @@ class CurriedEconomySolver:
             f"00MS “Stinger”, Spatha, Silverhand, Falchion, Basic Materials, 40mm, etc."
         )
 
+    def _inventory_index(self, name: str) -> int | None:
+        """Exact or case-insensitive registry match; stock is never fuzzy-matched."""
+        if name in self.item_to_idx:
+            return self.item_to_idx[name]
+        lower = name.strip().lower()
+        for item, idx in self.item_to_idx.items():
+            if item.lower() == lower:
+                return idx
+        return None
+
+    def _net_production(self, d_vec: np.ndarray, stock: np.ndarray) -> np.ndarray:
+        """Least production x >= 0 with x = max(0, d + A x - stock).
+
+        Iterates upward from zero; with a productive (Hawkins-Simon) matrix this converges,
+        in at most depth-of-graph steps when the recipe graph is acyclic.
+        """
+        x = np.zeros(self.n, dtype=float)
+        for _ in range(10 * self.n + 100):
+            x_next = np.maximum(0.0, d_vec + self.A @ x - stock)
+            if np.allclose(x_next, x, atol=1e-9, rtol=0.0):
+                return x_next
+            x = x_next
+        raise RuntimeError("Inventory netting did not converge")
+
     def solve(
         self,
         demand: dict[str, float],
         include_machine_counts: bool = False,
         time_window_seconds: float | None = None,
         round_to_crates: bool = False,
+        inventory: dict[str, float] | None = None,
     ) -> ProductionPlan:
         """Solve the curried Leontief balance equation x = L * d for target production demand.
 
@@ -1113,6 +1142,9 @@ class CurriedEconomySolver:
             time_window_seconds: Production time budget (default: 3600 seconds = 1 hour)
             round_to_crates: Round each demanded crate-produced item up to whole crates
                 before solving, since facilities cannot queue partial crates
+            inventory: Units already on hand {item_name: quantity}, e.g. from a stockpile.
+                Netted against demanded items first (before crate rounding), then against
+                every intermediate and raw input, so only the shortfall is produced.
 
         Returns:
             Structured ProductionPlan with full BOM down to raw Salvage/Components.
@@ -1129,17 +1161,34 @@ class CurriedEconomySolver:
         if not resolved_demand:
             raise ValueError("No positive demand quantities were specified.")
 
+        stock = np.zeros(self.n, dtype=float)
+        for name, qty in (inventory or {}).items():
+            idx = self._inventory_index(name)
+            if idx is not None and qty > 0:
+                stock[idx] += float(qty)
+        stock_on_hand = stock.copy()
+
         crates: dict[str, int] = {}
         for item, qty in resolved_demand.items():
+            idx = self.item_to_idx[item]
+            # Finished goods already in stock are issued before anything is made
+            taken = min(stock[idx], qty)
+            stock[idx] -= taken
+            qty -= taken
             size = self.registry[item].crate_size
-            if size and self.registry[item].category != ItemCategory.RAW_RESOURCE:
+            if qty > 0 and size and self.registry[item].category != ItemCategory.RAW_RESOURCE:
                 crates[item] = math.ceil(qty / size - 1e-9)
                 if round_to_crates:
-                    resolved_demand[item] = float(crates[item] * size)
-            d_vec[self.item_to_idx[item]] += resolved_demand[item]
+                    qty = float(crates[item] * size)
+            # Report what is delivered: stock issued plus (possibly crate-rounded) production
+            resolved_demand[item] = taken + qty
+            d_vec[idx] += qty
 
-        # Matrix-vector multiplication x = L * d (Instantaneous O(N^2))
-        x_vec = self.L @ d_vec
+        if inventory:
+            x_vec = self._net_production(d_vec, stock)
+        else:
+            # Matrix-vector multiplication x = L * d (Instantaneous O(N^2))
+            x_vec = self.L @ d_vec
 
         # Internal consumption c = A * x = x - d
         c_vec = self.A @ x_vec
@@ -1202,6 +1251,16 @@ class CurriedEconomySolver:
                         integer_machines=math.ceil(raw_count - 1e-9),
                     )
 
+        inventory_used: dict[str, float] = {}
+        if inventory:
+            # Need for each good = final demand + downstream consumption; stock covers the gap
+            need = d_vec + self.A @ x_vec
+            leftover_used = np.minimum(stock, need)
+            used_vec = (stock_on_hand - stock) + leftover_used
+            for idx, item in enumerate(self.items):
+                if used_vec[idx] > 1e-9:
+                    inventory_used[item] = round(float(used_vec[idx]), 2)
+
         # Generate human-readable summary
         summary_lines = []
         demand_str = ", ".join(f"{v}x {k}" for k, v in resolved_demand.items())
@@ -1219,6 +1278,9 @@ class CurriedEconomySolver:
         if intermediate_goods:
             inter_str = ", ".join(f"{v:g} {k}" for k, v in sorted(intermediate_goods.items()))
             summary_lines.append(f"• Intermediate Goods: {inter_str}")
+        if inventory_used:
+            used_str = ", ".join(f"{v:g} {k}" for k, v in sorted(inventory_used.items()))
+            summary_lines.append(f"• Drawn From Inventory: {used_str}")
 
         summary = "\n".join(summary_lines)
 
@@ -1233,6 +1295,7 @@ class CurriedEconomySolver:
             internal_consumption=internal_consumption,
             machines=machines,
             crates=crates or None,
+            inventory_used=inventory_used or None,
             summary=summary,
         )
 

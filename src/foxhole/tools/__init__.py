@@ -15,6 +15,7 @@ from foxhole.tools.production import (
     plan_production,
     register_production_tools,
 )
+from foxhole.tools.stockpiles import StockpileTools, default_stockpile_tools
 from foxhole.tools.warapi import (
     WarApiTools,
     default_war_tools,
@@ -43,11 +44,13 @@ DEFAULT_TOOL_PROVIDERS: tuple[
     WarApiTools,
     DispatchesTools,
     ProductionTools,
+    StockpileTools,
 ] = (
     default_wiki_tools,
     default_war_tools,
     default_dispatches_tools,
     default_production_tools,
+    default_stockpile_tools,
 )
 
 __all__ = [
@@ -55,12 +58,14 @@ __all__ = [
     "BaseToolProvider",
     "DispatchesTools",
     "ProductionTools",
+    "StockpileTools",
     "WarApiTools",
     "WikiTools",
     "calculate_required_resources",
     "default_dispatches_tools",
     "default_fetch_recipes",
     "default_production_tools",
+    "default_stockpile_tools",
     "default_war_tools",
     "default_wiki_tools",
     "edit_wiki_page",

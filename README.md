@@ -137,6 +137,13 @@ Read operations require no authentication. For writing or editing pages with `ed
 1. `plan_production(target, quantity, recipe_overrides, recipe_choice)`: Full bill of materials from live wiki recipes. Rolls up a DAG in topological order with integer batch rounding, reports production steps, facility load, and alternative recipes; falls back to the Leontief solve $x = (I - A)^{-1}d$ only when the recipe graph has a feedback loop.
 2. `calculate_required_resources(demand, include_machine_counts, time_window_seconds, round_to_crates)`: BOM from the precompiled economy registry. After `foxhole cargo-sync`, the registry is built from the wiki's [Cargo](https://foxhole.wiki.gg/wiki/Special:CargoTables) `Production` table (every RecipeRank 1 recipe) instead of the built-in list. `crates` reports whole crates per demanded item; `round_to_crates` solves for those full crates.
 
+### Stockpile Tools ([`xurxogr/foxhole-stockpiles`](https://github.com/xurxogr/foxhole-stockpiles))
+[foxhole-stockpiles](https://github.com/xurxogr/foxhole-stockpiles) captures in-game stockpiles by OCR screenshot, the game's *Copy to Clipboard*, or the `.sav` save file, and exports them as JSON/CSV/TSV. Items are keyed by game CodeName, which matches the wiki Cargo `codename`, so contents resolve straight onto wiki names, crate sizes and recipes (run `foxhole cargo-sync` first).
+1. `read_stockpile(path, stockpile_names, hex_name, include_reserves)`: Stockpile contents in wiki terms, crated quantities converted to units, plus a combined `inventory`.
+2. `plan_from_stockpile(path, demand, ...)`: Bill of materials **net of stock**. Finished goods on hand are issued first, then the recipe tree is netted against stocked intermediates and raws (stocked Basic Materials cancel their Salvage). Reports `inventory_used` and only the shortfall to produce.
+
+`calculate_required_resources` also takes an `inventory` dict directly. Reading `.sav` files needs the optional Rust parser: `uv sync --extra stockpiles`.
+
 ### Prompts
 1. `combat_intel(vehicle_or_weapon: str)`: In-depth combat evaluation, penetration analysis, and counter-tactics.
 2. `logistics_plan(item_name: str, requested_amount: int)`: Compute crate counts, material costs, and delivery plans.
@@ -201,6 +208,10 @@ uv run foxhole plan "Dunne Transport" --overrides '{"Basic Materials": {}}'
 # fall back to fetching pages for names it doesn't contain.
 uv run foxhole cargo-sync
 uv run foxhole resources "7.92mm" -q 20 --crates
+
+# --- Stockpiles (foxhole-stockpiles exports or .sav) ---
+uv run foxhole stockpile ~/stockpiles/tine.csv
+uv run foxhole resources "Gunner's Breastplate" -q 7 --crates --stockpile ~/stockpiles/tine.csv
 ```
 
 ---
