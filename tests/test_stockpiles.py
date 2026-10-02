@@ -175,7 +175,7 @@ def test_sav_uses_fs_sav(tmp_path, store, monkeypatch):
 
     monkeypatch.setitem(sys.modules, "fs_sav", types.SimpleNamespace(parse_save=parse_save))
     (snap,) = read_stockpiles(write(tmp_path, "MapData.sav", "binary"))
-    assert calls == [{"with_items": True}]
+    assert calls == [{}]  # with_items would drop empty pinned stockpiles
     assert (snap.hex, snap.is_reserve, snap.entries[0].units) == ("SpeakingWoodsHex", True, 200)
 
 

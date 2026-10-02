@@ -71,6 +71,7 @@ class StockpileSnapshot(BaseModel):
     name: str = ""
     type: str | None = None
     hex: str | None = None
+    coords: dict[str, float] | None = None
     is_reserve: bool = False
     faction: str | None = None
     timestamp: str | None = None
@@ -122,7 +123,8 @@ def _raw_from_sav(path: Path) -> list[dict[str, Any]]:
             "Reading .sav files needs the optional fs-sav parser: uv sync --extra stockpiles"
         ) from e
     try:
-        raw = fs_sav.parse_save(str(path), with_items=True)
+        # No with_items: that flag *filters out* empty stockpiles, which hides pinned ones
+        raw = fs_sav.parse_save(str(path))
     except RuntimeError as e:  # fs-sav reports corrupt/unsupported files this way
         raise ValueError(f"Could not read save file {path.name}: {e}") from e
     if not isinstance(raw, list):
@@ -171,6 +173,7 @@ def snapshot(raw: dict[str, Any], store: CargoStore | None) -> StockpileSnapshot
         name=raw.get("name") or "",
         type=raw.get("type") or None,
         hex=raw.get("hex"),
+        coords=raw.get("coords"),
         is_reserve=bool(raw.get("is_reserve", False)),
         faction=raw.get("faction"),
         timestamp=raw.get("timestamp"),
