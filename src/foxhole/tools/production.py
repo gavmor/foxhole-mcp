@@ -40,6 +40,7 @@ def calculate_required_resources(
     demand: dict[str, float],
     include_machine_counts: bool = False,
     time_window_seconds: float | None = None,
+    round_to_crates: bool = False,
 ) -> dict[str, Any]:
     """Calculate total raw resources, refined materials, intermediate components, and facility counts needed to produce any Foxhole vehicle, weapon, ammunition, or facility good.
 
@@ -58,6 +59,9 @@ def calculate_required_resources(
         demand: Desired output goods and quantities {item_name_or_alias: quantity}
         include_machine_counts: Whether to compute required physical assembly stations/factories
         time_window_seconds: Time budget in seconds to produce the demand (default: 3600s / 1 hour if machine counts requested)
+        round_to_crates: Round demanded items up to whole crates before solving (factories only
+            produce full crates, e.g. 20 mags of 7.92mm costs a full crate of 30). The `crates`
+            field always reports the whole crates needed.
     """
     try:
         with tracer.start_as_current_span(
@@ -72,6 +76,7 @@ def calculate_required_resources(
                 demand=demand,
                 include_machine_counts=include_machine_counts,
                 time_window_seconds=time_window_seconds,
+                round_to_crates=round_to_crates,
             )
             return plan.model_dump(exclude_none=True)
     except ValueError as e:

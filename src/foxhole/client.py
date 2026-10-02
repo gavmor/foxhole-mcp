@@ -238,6 +238,48 @@ class FoxholeWikiClient:
             logger.error("Failed to fetch page data for '%s': %s", title, e)
             return None
 
+    async def cargo_query(
+        self,
+        table: str,
+        fields: list[str],
+        where: str | None = None,
+        page_size: int = 500,
+    ) -> list[dict[str, str]]:
+        """Fetch every row of a Cargo table (action=cargoquery), paginating with offset.
+
+        Unlike the page helpers, errors are raised rather than swallowed: a partial table
+        would silently corrupt anything built from it.
+        """
+        client = await self._get_client()
+        rows: list[dict[str, str]] = []
+        offset = 0
+        while True:
+            params: dict[str, Any] = {
+                "action": "cargoquery",
+                "tables": table,
+                "fields": ",".join(fields),
+                "limit": page_size,
+                "offset": offset,
+                "format": "json",
+            }
+            if where:
+                params["where"] = where
+            try:
+                resp = await client.get(self.api_url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+            except httpx.HTTPError as e:
+                raise WikiError(f"Cargo query on '{table}' failed: {e}") from e
+            if "error" in data:
+                raise WikiError(
+                    f"Cargo query on '{table}' failed: {data['error'].get('info', data['error'])}"
+                )
+            batch = [entry["title"] for entry in data.get("cargoquery", [])]
+            rows.extend(batch)
+            if len(batch) < page_size:
+                return rows
+            offset += page_size
+
     async def get_login_token(self) -> str:
         """Fetch a login token from MediaWiki (action=query&meta=tokens&type=login)."""
         client = await self._get_client()

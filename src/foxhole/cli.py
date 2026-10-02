@@ -258,6 +258,7 @@ def run_resources(
     quantity: float = 1.0,
     machines: bool = False,
     time_window: float | None = None,
+    crates: bool = False,
 ) -> None:
     from foxhole.economy import get_economy_solver
 
@@ -267,11 +268,23 @@ def run_resources(
             demand={item_or_vehicle: quantity},
             include_machine_counts=machines,
             time_window_seconds=time_window,
+            round_to_crates=crates,
         )
         print(_format_dict(plan.model_dump(exclude_none=True)))
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+
+async def run_cargo_sync() -> None:
+    from foxhole.cargo import sync_production
+
+    client = FoxholeWikiClient()
+    try:
+        path, count = await sync_production(client)
+        print(f"Synced {count} Production rows to {path}")
+    finally:
+        await client.close()
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +440,13 @@ def main() -> None:
     res_parser.add_argument(
         "-t", "--time", type=float, default=3600.0, help="Time budget in seconds (default: 3600s)"
     )
+    res_parser.add_argument(
+        "-c", "--crates", action="store_true", help="Round demand up to whole crates"
+    )
+
+    subparsers.add_parser(
+        "cargo-sync", help="Download wiki Cargo tables used by the resources solver"
+    )
 
     args = parser.parse_args()
     telemetry_enabled = getattr(args, "telemetry", None)
@@ -480,7 +500,10 @@ def main() -> None:
             quantity=args.quantity,
             machines=args.machines,
             time_window=args.time,
+            crates=args.crates,
         )
+    elif args.command == "cargo-sync":
+        asyncio.run(run_cargo_sync())
     elif args.command == "plan":
         asyncio.run(run_plan(args.target, args.quantity, args.overrides, args.choice))
     else:
