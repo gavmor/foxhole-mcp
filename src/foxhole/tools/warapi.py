@@ -1,8 +1,11 @@
 """MCP tools for querying Foxhole live War API telemetry and world state."""
 
 import logging
+import re
+from datetime import UTC, datetime
 from typing import Any
 
+from foxhole import ingame_time as igt
 from foxhole.tools.base import BaseToolProvider
 from foxhole.warapi import (
     DEFAULT_SHARD,
@@ -23,6 +26,102 @@ class WarApiTools(BaseToolProvider):
         """Close the underlying War API client."""
         await self.war_client.close()
 
+    async def _clock(self, shard: str, report_day: int | None = None) -> igt.ClockState | None:
+        """Load the in-game clock calibration, refreshed with a current dayOfWar."""
+        war = await self.war_client.get_war_state(shard=shard)
+        if not war or not war.conquest_start_time:
+            return None
+        state = igt.ensure_war(igt.load_state(shard), war.war_id, shard, war.conquest_start_time)
+        if report_day is None:
+            maps = await self.war_client.get_maps(shard=shard)
+            report = await self.war_client.get_war_report(maps[0], shard=shard) if maps else None
+            report_day = report.day_of_war if report else None
+        if report_day:
+            state = igt.observe_day(state, report_day, igt.now())
+        igt.save_state(state)
+        return state
+
+    async def get_ingame_time(
+        self, shard: str = DEFAULT_SHARD, at_utc: str | None = None
+    ) -> dict[str, Any]:
+        """Current in-game day and clock ("Day 27, 0627 Hours"), as on the Map Screen.
+
+        One in-game day lasts one real hour. The day number comes from the War API's dayOfWar.
+        The clock within the day comes from a calibration that tightens with every observation,
+        and is exact once `calibrate_ingame_clock` has been given a reading from the game.
+        `plus_minus_minutes` is the uncertainty in in-game minutes.
+
+        Args:
+            shard: Shard name (default: 'live-1')
+            at_utc: Convert this UTC time instead of now (ISO 8601, e.g. '2026-10-02T18:48:00Z')
+        """
+        state = await self._clock(shard)
+        if state is None:
+            return {"error": f"No active war on shard '{shard}'."}
+        t = igt.now()
+        if at_utc:
+            try:
+                t = datetime.fromisoformat(at_utc.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return {"error": f"Bad at_utc {at_utc!r}; use ISO 8601"}
+        clock = igt.to_ingame(state, t)
+        return {
+            "shard": shard,
+            "utc": datetime.fromtimestamp(t, tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
+            **(clock.model_dump() if clock else {"label": None}),
+            "calibration": {
+                "observations": state.observations,
+                "pinned_note": state.pinned_note,
+                "hint": None
+                if state.pinned is not None
+                else "Exact once you give calibrate_ingame_clock the in-game time from the Map Screen.",
+            },
+        }
+
+    async def calibrate_ingame_clock(
+        self,
+        day: int,
+        time_hhmm: str,
+        observed_at_utc: str | None = None,
+        shard: str = DEFAULT_SHARD,
+    ) -> dict[str, Any]:
+        """Pin the in-game clock to a reading from the game's Map Screen (bottom left).
+
+        Rejected if it contradicts the War API's dayOfWar. Needed once per war; afterwards every
+        in-game time the server reports is exact to about a minute.
+
+        Args:
+            day: In-game day shown (e.g. 27)
+            time_hhmm: In-game military time shown (e.g. '0627')
+            observed_at_utc: When you read it (ISO 8601); omit if you read it just now
+            shard: Shard name (default: 'live-1')
+        """
+        state = await self._clock(shard)
+        if state is None:
+            return {"error": f"No active war on shard '{shard}'."}
+        t, slack = igt.now(), 5.0  # "just now": allow a few seconds to type it in
+        if observed_at_utc:
+            try:
+                t = datetime.fromisoformat(observed_at_utc.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return {"error": f"Bad observed_at_utc {observed_at_utc!r}; use ISO 8601"}
+            # A time given only to the minute is uncertain by up to half a minute either way
+            slack = 1.0 if re.search(r"\d{2}:\d{2}:\d{2}", observed_at_utc) else 30.0
+        try:
+            state = igt.calibrate(
+                state,
+                day,
+                time_hhmm.replace(":", ""),
+                t,
+                note=f"Day {day}, {time_hhmm} at {observed_at_utc or 'call time'}",
+                real_seconds_uncertain=slack,
+            )
+        except ValueError as e:
+            return {"error": str(e)}
+        igt.save_state(state)
+        clock = igt.to_ingame(state, igt.now())
+        return {"calibrated": True, "now": clock.model_dump() if clock else None}
+
     async def get_war_status(self, shard: str = DEFAULT_SHARD) -> dict[str, Any]:
         """Query live World Conquest status, war number, active winner, and victory requirements.
 
@@ -34,6 +133,7 @@ class WarApiTools(BaseToolProvider):
             return {
                 "error": f"Failed to retrieve War state from shard '{shard}'. Server may be offline."
             }
+        clock = await self._clock(shard)
 
         out = {
             "shard": shard,
@@ -42,6 +142,8 @@ class WarApiTools(BaseToolProvider):
             "status": state.status_display,
             "is_active": state.is_active,
             "winner": state.winner,
+            "now_ingame": self._label(clock, igt.now()),
+            "start_time_ingame": self._label(clock, (state.conquest_start_time or 0) / 1000),
             "start_time_utc": state.start_datetime,
             "required_victory_towns": state.required_victory_towns,
             "short_required_victory_towns": state.short_required_victory_towns,
@@ -67,9 +169,11 @@ class WarApiTools(BaseToolProvider):
                 return {
                     "error": f"Could not retrieve war report for hex '{map_name}' on shard '{shard}'."
                 }
+            clock = await self._clock(shard, report_day=report.day_of_war)
             return {
                 "shard": shard,
                 "map_name": report.map_name,
+                "now_ingame": self._label(clock, igt.now()),
                 "day_of_war": report.day_of_war,
                 "total_enlistments": report.total_enlistments,
                 "colonial_casualties": report.colonial_casualties,
@@ -83,6 +187,15 @@ class WarApiTools(BaseToolProvider):
             return {"error": f"Could not compute global casualties for shard '{shard}."}
 
         return global_stats.model_dump()
+
+    @staticmethod
+    def _label(state: igt.ClockState | None, t: float) -> str | None:
+        clock = igt.to_ingame(state, t) if state else None
+        if clock is None:
+            return None
+        if clock.calibrated and clock.plus_minus_minutes <= 3:
+            return clock.label
+        return f"{clock.label} (±{clock.plus_minus_minutes:g} min)"
 
     async def get_active_maps(self, shard: str = DEFAULT_SHARD) -> dict[str, Any]:
         """List all active World Conquest map hexes on the server.

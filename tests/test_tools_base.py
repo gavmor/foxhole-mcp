@@ -94,6 +94,8 @@ def test_warapi_tools_registration():
         "get_active_maps",
         "get_map_intel",
         "get_victory_town_status",
+        "get_ingame_time",
+        "calibrate_ingame_clock",
     }
     assert registered_names == expected
     assert "close" not in registered_names

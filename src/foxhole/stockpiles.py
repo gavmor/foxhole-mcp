@@ -26,6 +26,7 @@ import math
 import os
 import re
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -98,6 +99,7 @@ class SaveFile(BaseModel):
     """A Foxhole map save holding pinned stockpiles."""
 
     path: str
+    modified_ingame: str | None = Field(default=None, description='e.g. "Day 27, 0627 Hours"')
     modified: str = Field(description="Last write time (local, ISO 8601)")
     age_seconds: float = Field(description="Seconds since the game last wrote it")
     size_bytes: int
@@ -113,6 +115,7 @@ class StockpileSnapshot(BaseModel):
     coords: dict[str, float] | None = None
     is_reserve: bool = False
     faction: str | None = None
+    timestamp_ingame: str | None = Field(default=None, description="When the save last saw it")
     timestamp: str | None = None
     entries: list[StockpileEntry] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
@@ -152,6 +155,24 @@ def _raw_from_csv(text: str, delimiter: str) -> list[dict[str, Any]]:
             }
         )
     return list(piles.values())
+
+
+def _ingame(t: float) -> str | None:
+    from foxhole.ingame_time import ingame_label
+
+    return ingame_label(t)
+
+
+def _ingame_iso(stamp: Any) -> str | None:
+    if not isinstance(stamp, str) or not stamp:
+        return None
+    try:
+        dt = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:  # foxhole-stockpiles exports local naive times
+        dt = dt.astimezone()
+    return _ingame(dt.timestamp())
 
 
 def _steam_libraries() -> list[Path]:
@@ -195,6 +216,7 @@ def find_save_files() -> list[SaveFile]:
         saves.append(
             SaveFile(
                 path=str(real),
+                modified_ingame=_ingame(st.st_mtime),
                 modified=time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(st.st_mtime)),
                 age_seconds=round(now - st.st_mtime, 1),
                 size_bytes=st.st_size,
@@ -298,6 +320,7 @@ def snapshot(raw: dict[str, Any], store: CargoStore | None) -> StockpileSnapshot
         coords=raw.get("coords"),
         is_reserve=bool(raw.get("is_reserve", False)),
         faction=raw.get("faction"),
+        timestamp_ingame=_ingame_iso(raw.get("timestamp")),
         timestamp=raw.get("timestamp"),
     )
     if store is None:
@@ -436,6 +459,7 @@ def diff_since_last(snaps: list[StockpileSnapshot], source: str) -> dict[str, An
     path.write_text(json.dumps(state))
     return {
         "baseline": prev is None,
+        "previous_read_ingame": _ingame(prev["read_at"]) if prev else None,
         "previous_read_at": (
             time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(prev["read_at"])) if prev else None
         ),
