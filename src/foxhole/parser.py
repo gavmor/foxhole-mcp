@@ -167,15 +167,36 @@ def _extract_production_recipes(args: dict[str, str]) -> list[ProductionRecipe]:
     return recipes
 
 
+def _normalize_faction(raw: str | None) -> str:
+    faction = raw or "Both"
+    if faction.lower() in ("war", "warden"):
+        return "Warden"
+    if faction.lower() in ("col", "colonial"):
+        return "Colonial"
+    return faction
+
+
+def _wiki_url(title: str) -> str:
+    return f"https://foxhole.wiki.gg/wiki/{title.replace(' ', '_')}"
+
+
 def parse_vehicle(title: str, wikitext: str) -> VehicleStats | None:
     """Parse vehicle specifications from wikitext."""
     parsed = wtp.parse(wikitext)
     _, args = _get_infobox_args(parsed, r"Vehicle\s+Infobox")
     if not args:
         return None
+    return vehicle_from_args(title, args, _extract_quote(parsed), _extract_production_recipes(args))
 
-    name = args.get("name", title)
-    quote = _extract_quote(parsed)
+
+def vehicle_from_args(
+    title: str,
+    args: dict[str, str],
+    description: str | None = None,
+    production: list[ProductionRecipe] | None = None,
+) -> VehicleStats:
+    """Build VehicleStats from infobox arguments or a Cargo `vehicles` row (same keys)."""
+    name = args.get("name") or title
 
     # Subsystems
     subsystems: dict[str, float] = {}
@@ -189,17 +210,10 @@ def parse_vehicle(title: str, wikitext: str) -> VehicleStats | None:
         if val is not None:
             subsystems[label] = val
 
-    # Faction normalization
-    faction = args.get("faction", "Both")
-    if faction.lower() in ("war", "warden"):
-        faction = "Warden"
-    elif faction.lower() in ("col", "colonial"):
-        faction = "Colonial"
-
     return VehicleStats(
         name=name,
-        codename=args.get("codename"),
-        faction=faction,
+        codename=args.get("codename") or None,
+        faction=_normalize_faction(args.get("faction")),
         vehicle_type=args.get("type"),
         health=_safe_int(args.get("vehicle_hp")),
         armor_type=args.get("armour_type"),
@@ -217,9 +231,9 @@ def parse_vehicle(title: str, wikitext: str) -> VehicleStats | None:
         speed_on_road=_safe_float(args.get("speed")),
         speed_off_road=_safe_float(args.get("offspeed")),
         armaments=_extract_armaments(args),
-        production=_extract_production_recipes(args),
-        description=quote,
-        wiki_url=f"https://foxhole.wiki.gg/wiki/{title.replace(' ', '_')}",
+        production=production or [],
+        description=description,
+        wiki_url=_wiki_url(title),
     )
 
 
@@ -229,20 +243,20 @@ def parse_item(title: str, wikitext: str) -> ItemStats | None:
     _, args = _get_infobox_args(parsed, r"Item\s+Infobox")
     if not args:
         return None
+    return item_from_args(title, args, _extract_quote(parsed), _extract_production_recipes(args))
 
-    name = args.get("name", title)
-    quote = _extract_quote(parsed)
 
-    faction = args.get("faction", "Both")
-    if faction.lower() in ("war", "warden"):
-        faction = "Warden"
-    elif faction.lower() in ("col", "colonial"):
-        faction = "Colonial"
-
+def item_from_args(
+    title: str,
+    args: dict[str, str],
+    description: str | None = None,
+    production: list[ProductionRecipe] | None = None,
+) -> ItemStats:
+    """Build ItemStats from infobox arguments or a Cargo `itemdata` row (same keys)."""
     return ItemStats(
-        name=name,
-        codename=args.get("codename"),
-        faction=faction,
+        name=args.get("name") or title,
+        codename=args.get("codename") or None,
+        faction=_normalize_faction(args.get("faction")),
         item_type=args.get("type"),
         category=args.get("category") or args.get("ItemCategory"),
         equipment_slot=args.get("EquipmentSlot") or args.get("slot"),
@@ -256,9 +270,9 @@ def parse_item(title: str, wikitext: str) -> ItemStats | None:
         ammo=args.get("ammo"),
         crate_amount=_safe_int(args.get("crate_amount")),
         encumbrance=_safe_float(args.get("encumbrance")),
-        production=_extract_production_recipes(args),
-        description=quote,
-        wiki_url=f"https://foxhole.wiki.gg/wiki/{title.replace(' ', '_')}",
+        production=production or [],
+        description=description,
+        wiki_url=_wiki_url(title),
     )
 
 
@@ -268,29 +282,31 @@ def parse_structure(title: str, wikitext: str) -> StructureStats | None:
     _, args = _get_infobox_args(parsed, r"Structure\s+Infobox")
     if not args:
         return None
+    return structure_from_args(
+        title, args, _extract_quote(parsed), _extract_production_recipes(args)
+    )
 
-    name = args.get("name", title)
-    quote = _extract_quote(parsed)
 
-    faction = args.get("faction", "Both")
-    if faction.lower() in ("war", "warden"):
-        faction = "Warden"
-    elif faction.lower() in ("col", "colonial"):
-        faction = "Colonial"
-
+def structure_from_args(
+    title: str,
+    args: dict[str, str],
+    description: str | None = None,
+    production: list[ProductionRecipe] | None = None,
+) -> StructureStats:
+    """Build StructureStats from infobox arguments or a Cargo `structures` row (same keys)."""
     return StructureStats(
-        name=name,
-        codename=args.get("codename"),
-        faction=faction,
+        name=args.get("name") or title,
+        codename=args.get("codename") or None,
+        faction=_normalize_faction(args.get("faction")),
         structure_type=args.get("type") or args.get("construction_type"),
         health=_safe_int(args.get("structure_hp")),
         armor_type=args.get("armour_type"),
         decay_duration=_safe_float(args.get("decay_duration")),
         repair_cost=_safe_int(args.get("repair")),
         armaments=_extract_armaments(args),
-        production=_extract_production_recipes(args),
-        description=quote,
-        wiki_url=f"https://foxhole.wiki.gg/wiki/{title.replace(' ', '_')}",
+        production=production or [],
+        description=description,
+        wiki_url=_wiki_url(title),
     )
 
 
