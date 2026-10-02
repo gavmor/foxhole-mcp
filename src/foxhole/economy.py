@@ -1249,11 +1249,18 @@ def get_economy_solver() -> CurriedEconomySolver:
     """
     global _SOLVER_INSTANCE
     if _SOLVER_INSTANCE is None:
-        from foxhole.cargo import build_registry, load_production
+        from foxhole.cargo import (
+            ITEM_TABLE,
+            build_aliases,
+            build_registry,
+            load_production,
+            load_table,
+        )
 
         rows = load_production()
         registry = build_registry(rows) if rows else None
-        _SOLVER_INSTANCE = CurriedEconomySolver(registry=registry)
+        synonyms = {**build_aliases(load_table(ITEM_TABLE) or []), **SYNONYM_MAP}
+        _SOLVER_INSTANCE = CurriedEconomySolver(registry=registry, synonyms=synonyms)
     return _SOLVER_INSTANCE
 
 

@@ -116,6 +116,8 @@ uv run foxhole mcp --transport sse --port 8000
 4. `get_structure_stats(structure_name: str)`: Return structure HP, decay duration, repair cost, and defenses.
 5. `get_production_cost(name: str)`: Extract exact manufacturing requirements, cycle times, and facility sources.
 6. `get_page_overview(title: str)`: Return a clean text overview of any page without wiki markup.
+
+Tools 2–5 answer from the synced Cargo tables (`foxhole cargo-sync`) when available, matching on name, page title, internal codename (e.g. `TruckW`) or wiki alias, and preferring non-deprecated entries. Recipes come from the `Production` table keyed on output, so recipes listed on another item's page (e.g. Gas Mask Filter on the Gas Mask page) are found. Cargo rows carry no flavour quote, so `description` is omitted for cached results.
 7. `edit_wiki_page(title: str, content: str, summary: str = ..., section: str | None = None, minor: bool = False, bot: bool = False, createonly: bool = False, nocreate: bool = False)`: Create or edit pages via MediaWiki `action=edit` API with automatic CSRF token negotiation, session auth, retry on token expiration, and cache invalidation.
 
 #### MediaWiki Authentication
@@ -192,9 +194,11 @@ uv run foxhole plan "Silverhand Chieftain - Mk. VI" -q 2
 uv run foxhole plan "Construction Materials" -q 30 --choice '{"Construction Materials": 1}'
 uv run foxhole plan "Dunne Transport" --overrides '{"Basic Materials": {}}'
 
-# --- Resources Solver (Cargo-backed) ---
-# Download the wiki's Production Cargo table once (cached in $FOXHOLE_CARGO_DIR,
-# default ~/.cache/foxhole/cargo); re-run after game updates
+# --- Cargo Data Sync ---
+# Download the wiki's Production, itemdata, vehicles and structures Cargo tables once
+# (cached in $FOXHOLE_CARGO_DIR, default ~/.cache/foxhole/cargo); re-run after game updates.
+# Once synced, the stats/recipe tools and the resources solver read the cache and only
+# fall back to fetching pages for names it doesn't contain.
 uv run foxhole cargo-sync
 uv run foxhole resources "7.92mm" -q 20 --crates
 ```
