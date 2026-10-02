@@ -281,9 +281,21 @@ def run_resources(
 
 
 def run_stockpile(
-    path: str | None, names: list[str] | None, hex_name: str | None, changes: bool = False
+    path: str | None,
+    names: list[str] | None,
+    hex_name: str | None,
+    changes: bool = False,
+    desired: str | None = None,
+    crates: bool = False,
 ) -> None:
-    from foxhole.stockpiles import default_save_path, diff_since_last, inventory, read_stockpiles
+    from foxhole.stockpiles import (
+        default_save_path,
+        diff_since_last,
+        inventory,
+        load_quota,
+        quota_diff,
+        read_stockpiles,
+    )
 
     try:
         source = path or str(default_save_path())
@@ -291,6 +303,13 @@ def run_stockpile(
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+    if desired:
+        try:
+            print(_format_dict(quota_diff(load_quota(desired), snaps, crates=crates)))
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        return
     print(f"Source: {source}")
     if changes:
         diff = diff_since_last(snaps, f"{source}|{hex_name or '*'}|r")
@@ -510,6 +529,12 @@ def main() -> None:
     stock_parser.add_argument(
         "--changes", action="store_true", help="Show changes since the last --changes read"
     )
+    stock_parser.add_argument(
+        "--desired", metavar="QUOTA.json", help="Diff against desired levels (JSON quota file)"
+    )
+    stock_parser.add_argument(
+        "--crates", action="store_true", help="Quota and diff in crates rather than units"
+    )
     subparsers.add_parser("saves", help="List Foxhole save files found on this machine")
     stock_parser.add_argument("-n", "--name", action="append", help="Only this stockpile (repeat)")
     stock_parser.add_argument("--hex", help="Only stockpiles in this hex")
@@ -575,7 +600,7 @@ def main() -> None:
             stockpile=args.stockpile,
         )
     elif args.command == "stockpile":
-        run_stockpile(args.path, args.name, args.hex, args.changes)
+        run_stockpile(args.path, args.name, args.hex, args.changes, args.desired, args.crates)
     elif args.command == "saves":
         run_saves()
     elif args.command == "cargo-sync":

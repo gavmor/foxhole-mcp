@@ -22,6 +22,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import os
 import re
 import time
@@ -440,3 +441,139 @@ def diff_since_last(snaps: list[StockpileSnapshot], source: str) -> dict[str, An
         ),
         "changes": [c.model_dump(exclude_none=True) for c in changes],
     }
+
+
+# ---------------------------------------------------------------------------
+# Desired vs available: quota diffs
+# ---------------------------------------------------------------------------
+
+
+class QuotaLine(BaseModel):
+    name: str = Field(description="Wiki name")
+    requested_as: str = Field(description="Name as given in the quota")
+    resolved_by: str = Field(description="exact, alias/codename, or fuzzy (check these)")
+    desired: float
+    available: float
+    delta: float = Field(description="available - desired (negative = short)")
+    status: str = Field(description="short, met or surplus")
+    crate_size: int | None = None
+    crates_short: int | None = Field(
+        default=None, description="Whole crates to make up a shortfall"
+    )
+    crates_spare: int | None = Field(default=None, description="Whole crates beyond the quota")
+
+
+def load_quota(desired: dict[str, float] | str | Path) -> dict[str, float]:
+    """A quota as a dict, or a JSON file holding {name: qty} or {"desired": {name: qty}}."""
+    if isinstance(desired, dict):
+        return {str(k): float(v) for k, v in desired.items()}
+    path = Path(desired).expanduser()
+    if not path.exists():
+        raise ValueError(f"No such quota file: {path}")
+    data = json.loads(path.read_text())
+    data = data.get("desired", data) if isinstance(data, dict) else data
+    if not isinstance(data, dict):
+        raise ValueError('Quota file must hold {name: quantity} or {"desired": {...}}')
+    return {str(k): float(v) for k, v in data.items()}
+
+
+def _resolve_name(store: CargoStore | None, name: str) -> tuple[str | None, str]:
+    """Wiki name for a quota entry: exact name, then alias/codename, then solver fuzzy match."""
+    if store is not None:
+        for table in (ITEM_TABLE, VEHICLE_TABLE, STRUCTURE_TABLE):
+            row = store.find(table, name)
+            if row is not None:
+                how = (
+                    "exact"
+                    if row.get("name", "").lower() == name.strip().lower()
+                    else "alias/codename"
+                )
+                return row.get("name", name), how
+    try:
+        from foxhole.economy import get_economy_solver
+
+        return get_economy_solver().resolve_item_name(name), "fuzzy"
+    except ValueError:
+        return None, "unresolved"
+
+
+def quota_diff(
+    desired: dict[str, float],
+    snaps: list[StockpileSnapshot],
+    crates: bool = False,
+    include_unlisted: bool = False,
+) -> dict[str, Any]:
+    """Compare desired stock levels with what the stockpiles hold.
+
+    `crates=True` reads the desired quantities as crates and reports in crates; otherwise
+    everything is single units.
+    """
+    store = get_cargo_store()
+    have = inventory(snaps)
+    lines: list[QuotaLine] = []
+    unresolved: list[str] = []
+    wanted: dict[str, float] = {}
+    for requested, qty in desired.items():
+        name, how = _resolve_name(store, requested)
+        if name is None:
+            unresolved.append(requested)
+            continue
+        size = _resolve(store, name)[2] if store else None
+        if crates and not size:
+            unresolved.append(f"{requested} (no crate size known)")
+            continue
+        units = qty * size if crates and size else qty
+        wanted[name] = wanted.get(name, 0.0) + units
+        lines.append(
+            QuotaLine(
+                name=name,
+                requested_as=requested,
+                resolved_by=how,
+                desired=units,
+                available=0,
+                delta=0,
+                status="",
+                crate_size=size,
+            )
+        )
+
+    out_lines: dict[str, QuotaLine] = {}
+    for line in lines:  # merge duplicates that resolved to the same item
+        if line.name in out_lines:
+            continue
+        units_wanted = wanted[line.name]
+        units_have = have.get(line.name, 0.0)
+        delta = units_have - units_wanted
+        scale = line.crate_size if crates and line.crate_size else 1
+        line.desired = round(units_wanted / scale, 2)
+        line.available = round(units_have / scale, 2)
+        line.delta = round(delta / scale, 2)
+        line.status = "short" if delta < -1e-9 else "surplus" if delta > 1e-9 else "met"
+        if line.crate_size and line.crate_size > 1:  # liquids report a crate size of 1
+            if delta < 0:
+                line.crates_short = math.ceil(-delta / line.crate_size - 1e-9)
+            elif delta > 0:
+                line.crates_spare = math.floor(delta / line.crate_size + 1e-9)
+        out_lines[line.name] = line
+
+    result: dict[str, Any] = {
+        "unit": "crates" if crates else "units",
+        "items": [x.model_dump(exclude_none=True) for x in out_lines.values()],
+        "shortfall": {x.name: -x.delta for x in out_lines.values() if x.status == "short"},
+        "surplus": {x.name: x.delta for x in out_lines.values() if x.status == "surplus"},
+        "counts": {
+            s: sum(1 for x in out_lines.values() if x.status == s)
+            for s in ("short", "met", "surplus")
+        },
+    }
+    if crates:  # the solver works in units
+        result["shortfall_units"] = {
+            x.name: round(-x.delta * (x.crate_size or 1), 2)
+            for x in out_lines.values()
+            if x.status == "short"
+        }
+    if include_unlisted:
+        result["unlisted"] = {k: round(v, 2) for k, v in sorted(have.items()) if k not in wanted}
+    if unresolved:
+        result["unresolved"] = unresolved
+    return result

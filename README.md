@@ -144,6 +144,8 @@ Read operations require no authentication. For writing or editing pages with `ed
 3. `stockpile_changes(path=None, hex_name, include_reserves)`: What changed since the last call. It reports stockpiles `added` (pinned), `removed` (unpinned) or `changed`, with the units gained or lost per item. The first call records a baseline. State is kept in `~/.cache/foxhole/stockpiles/`.
 4. `plan_from_stockpile(demand, path=None, ...)`: Bill of materials **net of stock**. Finished goods on hand are issued first, then the recipe tree is netted against stocked intermediates and raw materials (stocked Basic Materials cancel their Salvage). Reports `inventory_used` and only the shortfall to produce.
 
+5. `stockpile_quota_diff(desired | quota_file, path=None, hex_name, crates, include_unlisted, ...)`: **Desired vs available** as JSON. For each quota item it returns desired, available, `delta` (available − desired), `status` (`short` / `met` / `surplus`) and whole `crates_short` / `crates_spare`. It also returns `shortfall` and `surplus` maps, plus `counts` and any `unresolved` names. Quota names may be wiki names, aliases or CodeNames, and each line records how its name was resolved. `shortfall` (`shortfall_units` in crate mode) is ready to pass as `demand` to `calculate_required_resources` or `plan_from_stockpile`. A quota file is `{name: qty}` or `{"desired": {name: qty}}`.
+
 > The game records a stockpile's contents in the save only once it is **pinned and has been opened** in game. A freshly pinned stockpile shows 0 items until then.
 
 `calculate_required_resources` also takes an `inventory` dict directly. Reading `.sav` files needs the optional Rust parser: `uv sync --extra stockpiles`.
@@ -217,6 +219,7 @@ uv run foxhole resources "7.92mm" -q 20 --crates
 uv run foxhole saves                         # where's my save?
 uv run foxhole stockpile --hex SpeakingWoodsHex  # newest save, pinned stockpiles in a hex
 uv run foxhole stockpile --changes           # what changed since the last --changes
+uv run foxhole stockpile --hex SpeakingWoodsHex --desired quota.json   # desired vs available (JSON)
 uv run foxhole stockpile ~/stockpiles/tine.csv   # or a foxhole-stockpiles export
 uv run foxhole resources "Gunner's Breastplate" -q 7 --crates --stockpile ~/stockpiles/tine.csv
 ```

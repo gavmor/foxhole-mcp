@@ -441,3 +441,92 @@ async def test_tools_default_to_newest_save(tmp_path, store, monkeypatch):
 
     changes = await tools.stockpile_changes()
     assert changes["baseline"] is True
+
+
+# --------------------------------------------------------------------- quota diffs
+
+
+def tine_pile():
+    return [
+        pile(
+            "Tine",
+            [
+                {"code": "Cloth", "quantity": 3, "crated": True},  # 300 Basic Materials
+                {"code": "SoldierSupplies", "quantity": 25, "crated": False},
+                {"code": "RifleW", "quantity": 2, "crated": True},  # 40 rifles
+                {"code": "Metal", "quantity": 999},
+            ],
+        )
+    ]
+
+
+def test_quota_diff_units(tmp_path, store):
+    snaps = read_stockpiles(write(tmp_path, "t.json", tine_pile()))
+    out = stockpiles.quota_diff(
+        {"Basic Materials": 500, "Soldier Supplies": 25, "RifleW": 10, "Nonsense Thing": 1},
+        snaps,
+        include_unlisted=True,
+    )
+    items = {x["name"]: x for x in out["items"]}
+    assert items["Basic Materials"] | {} == {
+        **items["Basic Materials"],
+        "desired": 500,
+        "available": 300,
+        "delta": -200,
+        "status": "short",
+        "crates_short": 2,
+    }
+    assert items["Soldier Supplies"]["status"] == "met"
+    rifle = items["No.2 Loughcaster"]
+    assert (rifle["requested_as"], rifle["resolved_by"], rifle["delta"], rifle["crates_spare"]) == (
+        "RifleW",
+        "alias/codename",
+        30,
+        1,
+    )
+    assert out["shortfall"] == {"Basic Materials": 200}
+    assert out["surplus"] == {"No.2 Loughcaster": 30}
+    assert out["counts"] == {"short": 1, "met": 1, "surplus": 1}
+    assert out["unlisted"] == {"Salvage": 999}
+    assert out["unresolved"] == ["Nonsense Thing"]
+
+
+def test_quota_diff_crates_mode(tmp_path, store):
+    snaps = read_stockpiles(write(tmp_path, "t.json", tine_pile()))
+    out = stockpiles.quota_diff({"Basic Materials": 5, "Soldier Supplies": 2}, snaps, crates=True)
+    items = {x["name"]: x for x in out["items"]}
+    assert (items["Basic Materials"]["desired"], items["Basic Materials"]["available"]) == (5, 3)
+    assert items["Soldier Supplies"]["delta"] == 0.5  # 25 shirts = 2.5 crates
+    assert out["shortfall"] == {"Basic Materials": 2}
+    assert out["shortfall_units"] == {"Basic Materials": 200}
+
+
+def test_quota_file_and_tool(tmp_path, store):
+    quota = write(tmp_path, "quota.json", {"desired": {"Basic Materials": 400}})
+    assert stockpiles.load_quota(quota) == {"Basic Materials": 400.0}
+    with pytest.raises(ValueError, match="No such quota file"):
+        stockpiles.load_quota(tmp_path / "missing.json")
+
+
+async def test_quota_tool(tmp_path, store):
+    path = str(write(tmp_path, "t.json", tine_pile()))
+    tools = StockpileTools()
+    both = await tools.stockpile_quota_diff(desired={"x": 1}, quota_file="q.json", path=path)
+    assert "exactly one" in both["error"]
+    out = await tools.stockpile_quota_diff(desired={"Basic Materials": 350}, path=path)
+    assert out["stockpiles_read"] == ["Tine @ SpeakingWoodsHex"]
+    assert out["shortfall"] == {"Basic Materials": 50}
+
+
+def test_quota_diff_skips_crates_for_unit_crates(tmp_path, monkeypatch):
+    items = [
+        *ITEMS,
+        {"page": "Diesel", "name": "Diesel", "codename": "Diesel", "crate_amount": "1"},
+    ]
+    s = CargoStore({"itemdata": items, "Production": PRODUCTION})
+    monkeypatch.setattr(stockpiles, "get_cargo_store", lambda: s)
+    snaps = read_stockpiles(
+        write(tmp_path, "d.json", [pile("T", [{"code": "Diesel", "quantity": 2, "crated": True}])])
+    )
+    (line,) = stockpiles.quota_diff({"Diesel": 150}, snaps)["items"]
+    assert line["delta"] == -148 and "crates_short" not in line

@@ -9,6 +9,8 @@ from foxhole.stockpiles import (
     diff_since_last,
     find_save_files,
     inventory,
+    load_quota,
+    quota_diff,
     read_stockpiles,
 )
 from foxhole.telemetry import get_tracer
@@ -101,6 +103,52 @@ class StockpileTools(BaseToolProvider):
             return {"error": str(e)}
         scope = f"{source}|{hex_name or '*'}|{'r' if include_reserves else 'p'}"
         return {"source": source, **diff_since_last(snaps, scope)}
+
+    async def stockpile_quota_diff(
+        self,
+        desired: dict[str, float] | None = None,
+        quota_file: str | None = None,
+        path: str | None = None,
+        stockpile_names: list[str] | None = None,
+        hex_name: str | None = None,
+        include_reserves: bool = True,
+        crates: bool = False,
+        include_unlisted: bool = False,
+    ) -> dict[str, Any]:
+        """Diff desired stock levels against what pinned stockpiles actually hold, as JSON.
+
+        For each desired item: desired, available, delta (available - desired), status
+        (short / met / surplus) and whole crates short or spare. Also returns `shortfall` and
+        `surplus` maps. `shortfall` (or `shortfall_units` in crate mode) can be passed straight
+        to `calculate_required_resources` or `plan_from_stockpile` as the demand.
+
+        Args:
+            desired: Target levels {item name, alias or CodeName: quantity}
+            quota_file: JSON file with {name: qty} or {"desired": {...}}, instead of `desired`
+            path: Save or export file; omit to use the newest Foxhole save
+            stockpile_names: Only count these stockpiles
+            hex_name: Only count stockpiles in this hex (e.g. 'SpeakingWoodsHex')
+            include_reserves: Count reserve stockpiles too (default: True)
+            crates: Read and report quantities in crates instead of single units
+            include_unlisted: Also list stocked items the quota doesn't mention
+        """
+        if (desired is None) == (quota_file is None):
+            return {"error": "Give exactly one of `desired` or `quota_file`."}
+        try:
+            spec: dict[str, float] | str = desired if desired is not None else str(quota_file)
+            quota = load_quota(spec)
+            source = _source(path)
+            snaps = read_stockpiles(source, stockpile_names, hex_name, include_reserves)
+        except ValueError as e:
+            return {"error": str(e)}
+        result = quota_diff(quota, snaps, crates=crates, include_unlisted=include_unlisted)
+        return {
+            "source": source,
+            "stockpiles_read": [
+                " @ ".join(x for x in (s.name or s.type, s.hex) if x) or "unnamed" for s in snaps
+            ],
+            **result,
+        }
 
     async def plan_from_stockpile(
         self,
