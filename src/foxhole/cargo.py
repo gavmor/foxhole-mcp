@@ -183,7 +183,9 @@ def build_registry(rows: list[dict[str, str]]) -> dict[str, ItemDefinition]:
             facility_type=row.get("Source") or None,
             crafting_time_sec=_num(row.get("ProductionTime")),
             yield_per_craft=units,
-            crate_size=int(crate_capacity) if crate_capacity else None,
+            crate_size=int(crate_capacity)
+            if (crate_capacity and row.get("IsCrateOutput") == "1")
+            else None,
         )
 
     for name in sorted(referenced - registry.keys()):
