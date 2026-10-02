@@ -277,12 +277,14 @@ def run_resources(
 
 
 async def run_cargo_sync() -> None:
-    from foxhole.cargo import sync_production
+    from foxhole.cargo import default_cache_dir, sync_all
 
     client = FoxholeWikiClient()
     try:
-        path, count = await sync_production(client)
-        print(f"Synced {count} Production rows to {path}")
+        counts = await sync_all(client)
+        print(f"Synced to {default_cache_dir()}:")
+        for table, count in counts.items():
+            print(f"  {table}: {count} rows")
     finally:
         await client.close()
 
@@ -445,7 +447,8 @@ def main() -> None:
     )
 
     subparsers.add_parser(
-        "cargo-sync", help="Download wiki Cargo tables used by the resources solver"
+        "cargo-sync",
+        help="Download the wiki Cargo tables used for stats, recipes and the resources solver",
     )
 
     args = parser.parse_args()

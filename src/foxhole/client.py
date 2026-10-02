@@ -248,7 +248,8 @@ class FoxholeWikiClient:
         """Fetch every row of a Cargo table (action=cargoquery), paginating with offset.
 
         Unlike the page helpers, errors are raised rather than swallowed: a partial table
-        would silently corrupt anything built from it.
+        would silently corrupt anything built from it. The API reports field names with
+        underscores turned into spaces; they are restored so rows match the infobox keys.
         """
         client = await self._get_client()
         rows: list[dict[str, str]] = []
@@ -274,11 +275,30 @@ class FoxholeWikiClient:
                 raise WikiError(
                     f"Cargo query on '{table}' failed: {data['error'].get('info', data['error'])}"
                 )
-            batch = [entry["title"] for entry in data.get("cargoquery", [])]
+            batch = [
+                {key.replace(" ", "_"): value for key, value in entry["title"].items()}
+                for entry in data.get("cargoquery", [])
+            ]
             rows.extend(batch)
             if len(batch) < page_size:
                 return rows
             offset += page_size
+
+    async def cargo_fields(self, table: str) -> list[str]:
+        """List the field names of a Cargo table (action=cargofields)."""
+        client = await self._get_client()
+        params = {"action": "cargofields", "table": table, "format": "json"}
+        try:
+            resp = await client.get(self.api_url, params=params)
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPError as e:
+            raise WikiError(f"Listing fields of '{table}' failed: {e}") from e
+        if "error" in data:
+            raise WikiError(
+                f"Listing fields of '{table}' failed: {data['error'].get('info', data['error'])}"
+            )
+        return list(data.get("cargofields", {}))
 
     async def get_login_token(self) -> str:
         """Fetch a login token from MediaWiki (action=query&meta=tokens&type=login)."""

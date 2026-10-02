@@ -14,7 +14,7 @@ class ProductionRecipe(BaseModel):
     category: str | None = Field(
         default=None, description="Category queue within the production source"
     )
-    inputs: dict[str, int] = Field(
+    inputs: dict[str, int | float] = Field(
         default_factory=dict, description="Input materials and required quantities"
     )
     input_vehicle: str | None = Field(

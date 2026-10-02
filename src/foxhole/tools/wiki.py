@@ -3,12 +3,13 @@
 import logging
 from typing import Any, ClassVar
 
+from foxhole.cargo import get_cargo_store
 from foxhole.client import (
     FoxholeWikiClient,
     WikiAuthenticationError,
     WikiEditError,
 )
-from foxhole.models import WikiEditResult
+from foxhole.models import ItemStats, WikiEditResult
 from foxhole.parser import (
     parse_item,
     parse_page_content,
@@ -89,6 +90,8 @@ class WikiTools(BaseToolProvider):
         Args:
             vehicle_name: Name or alias of the vehicle (e.g. 'Silverhand - Mk. IV', 'Dunne Transport', 'Falchion')
         """
+        if (store := get_cargo_store()) and (cached := store.vehicle(vehicle_name)):
+            return cached.model_dump(exclude_none=True)
         resolved = await self.resolve_title(vehicle_name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
@@ -115,6 +118,8 @@ class WikiTools(BaseToolProvider):
         Args:
             item_name: Name of weapon, tool, or shell (e.g. 'No.2 Loughcaster', '40mm', 'Gas Mask', 'Bishamon')
         """
+        if (store := get_cargo_store()) and (cached := store.item(item_name)):
+            return cached.model_dump(exclude_none=True)
         resolved = await self.resolve_title(item_name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
@@ -141,6 +146,8 @@ class WikiTools(BaseToolProvider):
         Args:
             structure_name: Name of structure (e.g. 'Storm Cannon', 'Bunker Base', 'Rifle Pillbox')
         """
+        if (store := get_cargo_store()) and (cached := store.structure(structure_name)):
+            return cached.model_dump(exclude_none=True)
         resolved = await self.resolve_title(structure_name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
@@ -168,6 +175,24 @@ class WikiTools(BaseToolProvider):
         Args:
             name: Name of entity to query (e.g. 'Dunne Transport', '40mm', 'Silverhand Chieftain - Mk. VI')
         """
+        if store := get_cargo_store():
+            for entity_type, find in (
+                ("vehicle", store.vehicle),
+                ("item", store.item),
+                ("structure", store.structure),
+            ):
+                stats = find(name)
+                if stats and stats.production:
+                    result: dict[str, Any] = {"name": stats.name, "entity_type": entity_type}
+                    if isinstance(stats, ItemStats):
+                        result["crate_amount"] = stats.crate_amount or store.crate_capacity(
+                            stats.name
+                        )
+                    result["production_recipes"] = [
+                        p.model_dump(exclude_none=True) for p in stats.production
+                    ]
+                    result["wiki_url"] = stats.wiki_url
+                    return {k: v for k, v in result.items() if v is not None}
         resolved = await self.resolve_title(name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
