@@ -9,7 +9,12 @@ Supported inputs:
 - JSON: `{"stockpiles": [...]}` (the app's file/webhook payload), a bare list, or one stockpile
 - CSV/TSV: the app's export, with or without its header row
 - `.sav`: Foxhole save files (pinned stockpiles), via the optional `fs-sav` parser
-  (`uv sync --extra stockpiles`)
+  (`uv sync --extra stockpiles`). The save is found automatically (Steam/Proton on Linux,
+  Flatpak Steam, extra Steam libraries, Windows), read once into memory so a write in
+  progress is never parsed, and compared with the previous read to report changes.
+
+The game records a stockpile's contents in the save only once it is pinned and has been
+opened in game.
 """
 
 from __future__ import annotations
@@ -17,12 +22,35 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
+import re
+import time
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-from foxhole.cargo import ITEM_TABLE, STRUCTURE_TABLE, VEHICLE_TABLE, CargoStore, get_cargo_store
+from foxhole.cargo import (
+    ITEM_TABLE,
+    STRUCTURE_TABLE,
+    VEHICLE_TABLE,
+    CargoStore,
+    default_cache_dir,
+    get_cargo_store,
+)
+
+FOXHOLE_APP_ID = "505460"
+PROTON_SAVE_DIR = (
+    f"steamapps/compatdata/{FOXHOLE_APP_ID}/pfx/drive_c/users/steamuser"
+    "/AppData/Local/Foxhole/Saved/SaveGames"
+)
+STEAM_ROOTS = (
+    "~/.steam/steam",
+    "~/.steam/root",
+    "~/.steam/debian-installation",
+    "~/.local/share/Steam",
+    "~/.var/app/com.valvesoftware.Steam/.local/share/Steam",
+)
 
 # Column order of the foxhole-stockpiles CSV/TSV export (core/settings/.../csv_format.py)
 CSV_FIELDS = [
@@ -65,9 +93,19 @@ class StockpileEntry(BaseModel):
     confidence: float | None = Field(default=None, description="OCR match confidence (0-1)")
 
 
+class SaveFile(BaseModel):
+    """A Foxhole map save holding pinned stockpiles."""
+
+    path: str
+    modified: str = Field(description="Last write time (local, ISO 8601)")
+    age_seconds: float = Field(description="Seconds since the game last wrote it")
+    size_bytes: int
+
+
 class StockpileSnapshot(BaseModel):
     """A stockpile's contents in wiki terms."""
 
+    key: str = Field(default="", description="Stable identity: type:hex:coords:name")
     name: str = ""
     type: str | None = None
     hex: str | None = None
@@ -115,6 +153,77 @@ def _raw_from_csv(text: str, delimiter: str) -> list[dict[str, Any]]:
     return list(piles.values())
 
 
+def _steam_libraries() -> list[Path]:
+    """Steam roots plus any extra libraries listed in their libraryfolders.vdf."""
+    libs: list[Path] = []
+    for root in (Path(r).expanduser() for r in STEAM_ROOTS):
+        if not root.exists():
+            continue
+        libs.append(root)
+        vdf = root / "steamapps" / "libraryfolders.vdf"
+        if vdf.exists():
+            libs += [
+                Path(m) for m in re.findall(r'"path"\s+"([^"]+)"', vdf.read_text(errors="ignore"))
+            ]
+    return libs
+
+
+def find_save_files() -> list[SaveFile]:
+    """Foxhole map saves on this machine, newest first.
+
+    `FOXHOLE_SAVE_PATH` (a file or a folder) overrides discovery.
+    """
+    candidates: list[Path] = []
+    if override := os.getenv("FOXHOLE_SAVE_PATH"):
+        target = Path(override).expanduser()
+        candidates += [target] if target.is_file() else list(target.glob("*MapData.sav"))
+    else:
+        dirs = [lib / PROTON_SAVE_DIR for lib in _steam_libraries()]
+        if local := os.getenv("LOCALAPPDATA"):  # Windows
+            dirs.append(Path(local) / "Foxhole" / "Saved" / "SaveGames")
+        for d in dirs:
+            if d.is_dir():
+                candidates += d.glob("*MapData.sav")
+    seen: dict[Path, Path] = {}
+    for c in candidates:
+        seen.setdefault(c.resolve(), c)
+    now = time.time()
+    saves = []
+    for real in seen:
+        st = real.stat()
+        saves.append(
+            SaveFile(
+                path=str(real),
+                modified=time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(st.st_mtime)),
+                age_seconds=round(now - st.st_mtime, 1),
+                size_bytes=st.st_size,
+            )
+        )
+    return sorted(saves, key=lambda s: s.age_seconds)
+
+
+def default_save_path() -> Path:
+    saves = find_save_files()
+    if not saves:
+        raise ValueError(
+            "No Foxhole MapData.sav found. Pin a stockpile in game, or set FOXHOLE_SAVE_PATH."
+        )
+    return Path(saves[0].path)
+
+
+def _read_stable(path: Path, attempts: int = 5) -> bytes:
+    """Read the whole file, retrying if the game rewrote it mid-read."""
+    for _ in range(attempts):
+        before = path.stat()
+        data = path.read_bytes()
+        after = path.stat()
+        unchanged = (before.st_mtime_ns, before.st_size) == (after.st_mtime_ns, after.st_size)
+        if unchanged and len(data) == after.st_size:
+            return data
+        time.sleep(0.2)
+    raise ValueError(f"{path.name} kept changing while being read; try again shortly")
+
+
 def _raw_from_sav(path: Path) -> list[dict[str, Any]]:
     try:
         import fs_sav  # type: ignore[import-not-found]
@@ -122,9 +231,10 @@ def _raw_from_sav(path: Path) -> list[dict[str, Any]]:
         raise ValueError(
             "Reading .sav files needs the optional fs-sav parser: uv sync --extra stockpiles"
         ) from e
+    data = _read_stable(path)
     try:
         # No with_items: that flag *filters out* empty stockpiles, which hides pinned ones
-        raw = fs_sav.parse_save(str(path))
+        raw = fs_sav.parse_save_bytes(data)
     except RuntimeError as e:  # fs-sav reports corrupt/unsupported files this way
         raise ValueError(f"Could not read save file {path.name}: {e}") from e
     if not isinstance(raw, list):
@@ -132,9 +242,12 @@ def _raw_from_sav(path: Path) -> list[dict[str, Any]]:
     return raw
 
 
-def load_raw_stockpiles(path: str | Path) -> list[dict[str, Any]]:
-    """Read a foxhole-stockpiles export or Foxhole .sav file into raw stockpile dicts."""
-    path = Path(path).expanduser()
+def load_raw_stockpiles(path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Read a foxhole-stockpiles export or Foxhole .sav file into raw stockpile dicts.
+
+    With no path, reads the newest Foxhole save found on this machine.
+    """
+    path = default_save_path() if path is None else Path(path).expanduser()
     if not path.exists():
         raise ValueError(f"No such file: {path}")
     suffix = path.suffix.lower()
@@ -168,8 +281,16 @@ def _resolve(store: CargoStore | None, code: str) -> tuple[str | None, str | Non
     return None, None, None
 
 
+def stockpile_key(raw: dict[str, Any]) -> str:
+    """Identity matching foxhole-stockpiles' Stockpile.to_key(): type:hex:coords:name."""
+    c = raw.get("coords") or {}
+    coords = f"{c.get('x', 0):.4f},{c.get('y', 0):.4f}" if c else "0,0"
+    return f"{raw.get('type')}:{raw.get('hex')}:{coords}:{raw.get('name') or ''}"
+
+
 def snapshot(raw: dict[str, Any], store: CargoStore | None) -> StockpileSnapshot:
     snap = StockpileSnapshot(
+        key=stockpile_key(raw),
         name=raw.get("name") or "",
         type=raw.get("type") or None,
         hex=raw.get("hex"),
@@ -211,7 +332,7 @@ def snapshot(raw: dict[str, Any], store: CargoStore | None) -> StockpileSnapshot
 
 
 def read_stockpiles(
-    path: str | Path,
+    path: str | Path | None = None,
     names: list[str] | None = None,
     hex_name: str | None = None,
     include_reserves: bool = True,
@@ -239,3 +360,83 @@ def inventory(snapshots: list[StockpileSnapshot]) -> dict[str, float]:
             if entry.name and entry.units:
                 totals[entry.name] = totals.get(entry.name, 0.0) + entry.units
     return totals
+
+
+# ---------------------------------------------------------------------------
+# Change tracking between reads (the MCP stand-in for `fs-sav watch --diff`)
+# ---------------------------------------------------------------------------
+
+
+class StockpileChange(BaseModel):
+    key: str
+    type: str | None = None
+    hex: str | None = None
+    name: str = ""
+    status: str = Field(description="added, removed or changed")
+    deltas: dict[str, float] = Field(
+        default_factory=dict, description="Units gained (+) or lost (-) per wiki name or code"
+    )
+
+
+def _state_path() -> Path:
+    return default_cache_dir().parent / "stockpiles" / "last_seen.json"
+
+
+def _contents(snap: StockpileSnapshot) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for e in snap.entries:
+        label = e.name or e.code
+        out[label] = out.get(label, 0.0) + (e.units if e.units is not None else e.quantity)
+    return out
+
+
+def _record(snap: StockpileSnapshot) -> dict[str, Any]:
+    return {"type": snap.type, "hex": snap.hex, "name": snap.name, "items": _contents(snap)}
+
+
+def _change(
+    key: str, rec: dict[str, Any], status: str, deltas: dict[str, float]
+) -> StockpileChange:
+    return StockpileChange(
+        key=key, type=rec["type"], hex=rec["hex"], name=rec["name"], status=status, deltas=deltas
+    )
+
+
+def diff_since_last(snaps: list[StockpileSnapshot], source: str) -> dict[str, Any]:
+    """Compare snapshots with the previous read of the same source, then remember them."""
+    path = _state_path()
+    state: dict[str, Any] = json.loads(path.read_text()) if path.exists() else {}
+    prev: dict[str, Any] | None = state.get(source)
+    current: dict[str, dict[str, Any]] = {s.key: _record(s) for s in snaps}
+
+    changes: list[StockpileChange] = []
+    if prev is not None:
+        before: dict[str, dict[str, Any]] = prev["stockpiles"]
+        for key in sorted(before.keys() | current.keys()):
+            old, new = before.get(key), current.get(key)
+            if old is None and new is not None:
+                changes.append(_change(key, new, "added", dict(new["items"])))
+            elif new is None and old is not None:
+                changes.append(
+                    _change(key, old, "removed", {k: -v for k, v in old["items"].items()})
+                )
+            elif old is not None and new is not None:
+                o: dict[str, float] = old["items"]
+                n: dict[str, float] = new["items"]
+                deltas = {
+                    k: round(n.get(k, 0.0) - o.get(k, 0.0), 2) for k in sorted(o.keys() | n.keys())
+                }
+                deltas = {k: d for k, d in deltas.items() if d}
+                if deltas:
+                    changes.append(_change(key, new, "changed", deltas))
+
+    state[source] = {"read_at": time.time(), "stockpiles": current}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state))
+    return {
+        "baseline": prev is None,
+        "previous_read_at": (
+            time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(prev["read_at"])) if prev else None
+        ),
+        "changes": [c.model_dump(exclude_none=True) for c in changes],
+    }

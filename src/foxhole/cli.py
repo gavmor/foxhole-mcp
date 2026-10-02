@@ -280,14 +280,28 @@ def run_resources(
         sys.exit(1)
 
 
-def run_stockpile(path: str, names: list[str] | None, hex_name: str | None) -> None:
-    from foxhole.stockpiles import inventory, read_stockpiles
+def run_stockpile(
+    path: str | None, names: list[str] | None, hex_name: str | None, changes: bool = False
+) -> None:
+    from foxhole.stockpiles import default_save_path, diff_since_last, inventory, read_stockpiles
 
     try:
-        snaps = read_stockpiles(path, names, hex_name)
+        source = path or str(default_save_path())
+        snaps = read_stockpiles(source, names, hex_name)
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+    print(f"Source: {source}")
+    if changes:
+        diff = diff_since_last(snaps, f"{source}|{hex_name or '*'}|r")
+        if diff["baseline"]:
+            print("Baseline recorded; run again later to see changes.")
+        for c in diff["changes"]:
+            moves = ", ".join(f"{k} {v:+g}" for k, v in c["deltas"].items())
+            print(f"  {c['status']:8} {c['type']} @ {c['hex']} {c['name']}: {moves}")
+        if not diff["baseline"] and not diff["changes"]:
+            print(f"No changes since {diff['previous_read_at']}.")
+        return
     for snap in snaps:
         where = f" ({snap.hex})" if snap.hex else ""
         print(f"\n== {snap.name or 'unnamed'} [{snap.type or '?'}]{where}")
@@ -300,6 +314,16 @@ def run_stockpile(path: str, names: list[str] | None, hex_name: str | None) -> N
     print("\n== Inventory (units)")
     for name, units in sorted(inventory(snaps).items()):
         print(f"  {name:40} {units:g}")
+
+
+def run_saves() -> None:
+    from foxhole.stockpiles import find_save_files
+
+    saves = find_save_files()
+    if not saves:
+        print("No Foxhole MapData.sav found (set FOXHOLE_SAVE_PATH to point at one).")
+    for s in saves:
+        print(f"{s.modified}  {s.size_bytes:>8} B  {s.path}")
 
 
 async def run_cargo_sync() -> None:
@@ -480,7 +504,13 @@ def main() -> None:
     stock_parser = subparsers.add_parser(
         "stockpile", help="Show stockpile contents from a foxhole-stockpiles export or .sav file"
     )
-    stock_parser.add_argument("path", help="JSON/CSV/TSV export or Foxhole .sav file")
+    stock_parser.add_argument(
+        "path", nargs="?", help="Export or .sav file (default: newest Foxhole save)"
+    )
+    stock_parser.add_argument(
+        "--changes", action="store_true", help="Show changes since the last --changes read"
+    )
+    subparsers.add_parser("saves", help="List Foxhole save files found on this machine")
     stock_parser.add_argument("-n", "--name", action="append", help="Only this stockpile (repeat)")
     stock_parser.add_argument("--hex", help="Only stockpiles in this hex")
 
@@ -545,7 +575,9 @@ def main() -> None:
             stockpile=args.stockpile,
         )
     elif args.command == "stockpile":
-        run_stockpile(args.path, args.name, args.hex)
+        run_stockpile(args.path, args.name, args.hex, args.changes)
+    elif args.command == "saves":
+        run_saves()
     elif args.command == "cargo-sync":
         asyncio.run(run_cargo_sync())
     elif args.command == "plan":

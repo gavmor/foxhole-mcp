@@ -1,7 +1,9 @@
 """Tests for reading foxhole-stockpiles exports and planning net of inventory."""
 
 import json
+import os
 import sys
+import time
 import types
 
 import pytest
@@ -161,8 +163,8 @@ def test_filters(tmp_path, store):
 def test_sav_uses_fs_sav(tmp_path, store, monkeypatch):
     calls = []
 
-    def parse_save(path, **kwargs):
-        calls.append(kwargs)
+    def parse_save_bytes(data, **kwargs):
+        calls.append((data, kwargs))
         return [
             {
                 "name": "Pinned",
@@ -173,17 +175,20 @@ def test_sav_uses_fs_sav(tmp_path, store, monkeypatch):
             }
         ]
 
-    monkeypatch.setitem(sys.modules, "fs_sav", types.SimpleNamespace(parse_save=parse_save))
+    monkeypatch.setitem(
+        sys.modules, "fs_sav", types.SimpleNamespace(parse_save_bytes=parse_save_bytes)
+    )
     (snap,) = read_stockpiles(write(tmp_path, "MapData.sav", "binary"))
-    assert calls == [{}]  # with_items would drop empty pinned stockpiles
+    # Parsed from an in-memory snapshot; no with_items (it drops empty pinned stockpiles)
+    assert calls == [(b"binary", {})]
     assert (snap.hex, snap.is_reserve, snap.entries[0].units) == ("SpeakingWoodsHex", True, 200)
 
 
 def test_sav_errors_are_clean(tmp_path, store, monkeypatch):
-    def boom(path, **kwargs):
+    def boom(data, **kwargs):
         raise RuntimeError("Failed to parse save file")
 
-    monkeypatch.setitem(sys.modules, "fs_sav", types.SimpleNamespace(parse_save=boom))
+    monkeypatch.setitem(sys.modules, "fs_sav", types.SimpleNamespace(parse_save_bytes=boom))
     with pytest.raises(ValueError, match="Could not read save file"):
         read_stockpiles(write(tmp_path, "x.sav", "junk"))
 
@@ -266,10 +271,173 @@ async def test_plan_from_stockpile_tool(tmp_path, store, monkeypatch):
     read = await StockpileTools().read_stockpile(path)
     assert read["inventory"] == {"Basic Materials": 100.0}
 
-    plan = await StockpileTools().plan_from_stockpile(path, {"Soldier Supplies": 20})
+    plan = await StockpileTools().plan_from_stockpile({"Soldier Supplies": 20}, path=path)
     assert plan["stockpiles_read"] == ["Tine"]
     assert plan["inventory_used"] == {"Basic Materials": 100.0}
     assert plan["raw_resources"] == {"Salvage": 120.0}  # 160 bmats needed, 60 short
 
     missing = await StockpileTools().read_stockpile(str(tmp_path / "nope.json"))
     assert "error" in missing
+
+
+# --------------------------------------------------------------------- save discovery
+
+
+PROTON = (
+    "steamapps/compatdata/505460/pfx/drive_c/users/steamuser/AppData/Local/Foxhole/Saved/SaveGames"
+)
+
+
+def make_save(base, name="123_MapData.sav", age=0):
+    d = base / PROTON
+    d.mkdir(parents=True, exist_ok=True)
+    f = d / name
+    f.write_bytes(b"sav")
+    if age:
+        t = time.time() - age
+        os.utime(f, (t, t))
+    return f
+
+
+def test_find_saves_across_steam_layouts(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("FOXHOLE_SAVE_PATH", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    native = make_save(tmp_path / ".local/share/Steam", age=3600)
+    flatpak = make_save(tmp_path / ".var/app/com.valvesoftware.Steam/.local/share/Steam", age=60)
+    extra_lib = tmp_path / "games/SteamLibrary"
+    extra = make_save(extra_lib, name="456_MapData.sav")
+    vdf = tmp_path / ".local/share/Steam/steamapps/libraryfolders.vdf"
+    vdf.write_text(f'"libraryfolders" {{ "1" {{ "path" "{extra_lib}" }} }}')
+    make_save(tmp_path / ".local/share/Steam", name="UserData.sav")  # not a map save
+
+    found = [s.path for s in stockpiles.find_save_files()]
+    assert found == [
+        str(extra.resolve()),
+        str(flatpak.resolve()),
+        str(native.resolve()),
+    ]  # newest first
+    assert stockpiles.default_save_path() == extra.resolve()
+
+
+def test_save_path_override_and_none_found(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    monkeypatch.delenv("FOXHOLE_SAVE_PATH", raising=False)
+    with pytest.raises(ValueError, match=r"No Foxhole MapData\.sav found"):
+        stockpiles.default_save_path()
+    custom = tmp_path / "elsewhere" / "My_MapData.sav"
+    custom.parent.mkdir()
+    custom.write_bytes(b"x")
+    monkeypatch.setenv("FOXHOLE_SAVE_PATH", str(custom.parent))
+    assert stockpiles.default_save_path() == custom.resolve()
+
+
+def test_read_retries_while_game_writes(tmp_path, monkeypatch):
+    f = tmp_path / "m.sav"
+    f.write_bytes(b"old")
+    real_read = type(f).read_bytes
+    n = {"reads": 0}
+
+    def flaky_read(self):
+        n["reads"] += 1
+        if n["reads"] == 1:  # the game rewrites the file mid-read
+            self.write_bytes(b"newer content")
+            return b"old"
+        return real_read(self)
+
+    monkeypatch.setattr(type(f), "read_bytes", flaky_read)
+    monkeypatch.setattr(stockpiles.time, "sleep", lambda s: None)
+    assert stockpiles._read_stable(f) == b"newer content"
+    assert n["reads"] == 2
+
+
+# --------------------------------------------------------------------- change tracking
+
+
+def pile(name, items, hex_name="SpeakingWoodsHex"):
+    return {
+        "name": name,
+        "type": "Seaport",
+        "hex": hex_name,
+        "coords": {"x": 0.7, "y": 0.3},
+        "items": items,
+    }
+
+
+def test_changes_baseline_then_deltas(tmp_path, store):
+    path = tmp_path / "s.json"
+    path.write_text(json.dumps([pile("Tine", [{"code": "Cloth", "quantity": 2, "crated": True}])]))
+    first = stockpiles.diff_since_last(read_stockpiles(path), "src")
+    assert first["baseline"] is True and first["changes"] == []
+
+    path.write_text(
+        json.dumps(
+            [
+                pile(
+                    "Tine",
+                    [
+                        {"code": "Cloth", "quantity": 1, "crated": True},
+                        {"code": "Metal", "quantity": 300},
+                    ],
+                ),
+                pile(
+                    "Front",
+                    [{"code": "SoldierSupplies", "quantity": 3, "crated": True}],
+                    "LinnMercyHex",
+                ),
+            ]
+        )
+    )
+    second = stockpiles.diff_since_last(read_stockpiles(path), "src")
+    by_name = {c["name"]: c for c in second["changes"]}
+    assert second["baseline"] is False
+    assert by_name["Tine"]["status"] == "changed"
+    assert by_name["Tine"]["deltas"] == {"Basic Materials": -100.0, "Salvage": 300.0}
+    assert by_name["Front"] == {
+        **by_name["Front"],
+        "status": "added",
+        "deltas": {"Soldier Supplies": 30.0},
+    }
+
+    path.write_text(
+        json.dumps(
+            [
+                pile(
+                    "Tine",
+                    [
+                        {"code": "Cloth", "quantity": 1, "crated": True},
+                        {"code": "Metal", "quantity": 300},
+                    ],
+                )
+            ]
+        )
+    )
+    third = stockpiles.diff_since_last(read_stockpiles(path), "src")
+    assert [(c["name"], c["status"], c["deltas"]) for c in third["changes"]] == [
+        ("Front", "removed", {"Soldier Supplies": -30.0})
+    ]
+    assert stockpiles.diff_since_last(read_stockpiles(path), "src")["changes"] == []
+
+
+async def test_tools_default_to_newest_save(tmp_path, store, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.delenv("FOXHOLE_SAVE_PATH", raising=False)
+    monkeypatch.delenv("LOCALAPPDATA", raising=False)
+    make_save(tmp_path / ".steam/steam")
+    monkeypatch.setitem(
+        sys.modules,
+        "fs_sav",
+        types.SimpleNamespace(parse_save_bytes=lambda data, **kw: [pile("", [])]),
+    )
+    tools = StockpileTools()
+
+    saves = await tools.find_foxhole_saves()
+    assert len(saves["saves"]) == 1 and "pinned" in saves["note"]
+
+    read = await tools.read_stockpile()
+    assert read["source"].endswith("123_MapData.sav")
+    assert "opened in game" in read["note"]  # empty pinned stockpile explained
+
+    changes = await tools.stockpile_changes()
+    assert changes["baseline"] is True

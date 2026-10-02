@@ -139,8 +139,12 @@ Read operations require no authentication. For writing or editing pages with `ed
 
 ### Stockpile Tools ([`xurxogr/foxhole-stockpiles`](https://github.com/xurxogr/foxhole-stockpiles))
 [foxhole-stockpiles](https://github.com/xurxogr/foxhole-stockpiles) captures in-game stockpiles by OCR screenshot, the game's *Copy to Clipboard*, or the `.sav` save file, and exports them as JSON/CSV/TSV. Items are keyed by game CodeName, which matches the wiki Cargo `codename`, so contents resolve straight onto wiki names, crate sizes and recipes (run `foxhole cargo-sync` first).
-1. `read_stockpile(path, stockpile_names, hex_name, include_reserves)`: Stockpile contents in wiki terms, crated quantities converted to units, plus a combined `inventory`.
-2. `plan_from_stockpile(path, demand, ...)`: Bill of materials **net of stock**. Finished goods on hand are issued first, then the recipe tree is netted against stocked intermediates and raws (stocked Basic Materials cancel their Salvage). Reports `inventory_used` and only the shortfall to produce.
+1. `find_foxhole_saves()`: Foxhole `MapData.sav` files on this machine, newest first. It searches Steam/Proton on Linux (including Flatpak Steam and extra libraries from `libraryfolders.vdf`) and `%LOCALAPPDATA%` on Windows. Set `FOXHOLE_SAVE_PATH` (a file or a folder) to override.
+2. `read_stockpile(path=None, stockpile_names, hex_name, include_reserves)`: Pinned stockpiles in wiki terms, with crated quantities converted to units and a combined `inventory`. With no `path`, it reads the newest save from an in-memory snapshot, retrying if the game writes mid-read. It also accepts foxhole-stockpiles JSON/CSV/TSV exports.
+3. `stockpile_changes(path=None, hex_name, include_reserves)`: What changed since the last call. It reports stockpiles `added` (pinned), `removed` (unpinned) or `changed`, with the units gained or lost per item. The first call records a baseline. State is kept in `~/.cache/foxhole/stockpiles/`.
+4. `plan_from_stockpile(demand, path=None, ...)`: Bill of materials **net of stock**. Finished goods on hand are issued first, then the recipe tree is netted against stocked intermediates and raw materials (stocked Basic Materials cancel their Salvage). Reports `inventory_used` and only the shortfall to produce.
+
+> The game records a stockpile's contents in the save only once it is **pinned and has been opened** in game. A freshly pinned stockpile shows 0 items until then.
 
 `calculate_required_resources` also takes an `inventory` dict directly. Reading `.sav` files needs the optional Rust parser: `uv sync --extra stockpiles`.
 
@@ -210,7 +214,10 @@ uv run foxhole cargo-sync
 uv run foxhole resources "7.92mm" -q 20 --crates
 
 # --- Stockpiles (foxhole-stockpiles exports or .sav) ---
-uv run foxhole stockpile ~/stockpiles/tine.csv
+uv run foxhole saves                         # where's my save?
+uv run foxhole stockpile --hex SpeakingWoodsHex  # newest save, pinned stockpiles in a hex
+uv run foxhole stockpile --changes           # what changed since the last --changes
+uv run foxhole stockpile ~/stockpiles/tine.csv   # or a foxhole-stockpiles export
 uv run foxhole resources "Gunner's Breastplate" -q 7 --crates --stockpile ~/stockpiles/tine.csv
 ```
 
