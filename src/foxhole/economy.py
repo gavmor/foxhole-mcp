@@ -53,6 +53,10 @@ class ItemDefinition(BaseModel):
         default=None,
         description="Brief flavor or gameplay context",
     )
+    crate_size: int | None = Field(
+        default=None,
+        description="Units per crate when the facility only produces whole crates",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -941,6 +945,10 @@ class ProductionPlan(BaseModel):
         default=None,
         description="Required physical machine counts if requested",
     )
+    crates: dict[str, int] | None = Field(
+        default=None,
+        description="Whole crates needed for each demanded item that is produced in crates",
+    )
     summary: str = Field(description="Human-readable executive summary of the bill of materials")
 
 
@@ -963,7 +971,8 @@ class CurriedEconomySolver:
         synonyms: dict[str, str] | None = None,
     ) -> None:
         self.registry = registry or ECONOMY_REGISTRY
-        self.synonyms = synonyms or SYNONYM_MAP
+        # Drop aliases pointing at items this registry does not define
+        self.synonyms = {k: v for k, v in (synonyms or SYNONYM_MAP).items() if v in self.registry}
 
         # 1. Build canonical item list and index mappings
         self.items: list[str] = list(self.registry.keys())
@@ -1094,6 +1103,7 @@ class CurriedEconomySolver:
         demand: dict[str, float],
         include_machine_counts: bool = False,
         time_window_seconds: float | None = None,
+        round_to_crates: bool = False,
     ) -> ProductionPlan:
         """Solve the curried Leontief balance equation x = L * d for target production demand.
 
@@ -1101,6 +1111,8 @@ class CurriedEconomySolver:
             demand: Dictionary of target outputs {item_name: quantity}
             include_machine_counts: If True, calculates required assembly/factory counts
             time_window_seconds: Production time budget (default: 3600 seconds = 1 hour)
+            round_to_crates: Round each demanded crate-produced item up to whole crates
+                before solving, since facilities cannot queue partial crates
 
         Returns:
             Structured ProductionPlan with full BOM down to raw Salvage/Components.
@@ -1113,11 +1125,18 @@ class CurriedEconomySolver:
                 continue
             canonical = self.resolve_item_name(raw_item)
             resolved_demand[canonical] = resolved_demand.get(canonical, 0.0) + float(qty)
-            idx = self.item_to_idx[canonical]
-            d_vec[idx] += float(qty)
 
         if not resolved_demand:
             raise ValueError("No positive demand quantities were specified.")
+
+        crates: dict[str, int] = {}
+        for item, qty in resolved_demand.items():
+            size = self.registry[item].crate_size
+            if size and self.registry[item].category != ItemCategory.RAW_RESOURCE:
+                crates[item] = math.ceil(qty / size - 1e-9)
+                if round_to_crates:
+                    resolved_demand[item] = float(crates[item] * size)
+            d_vec[self.item_to_idx[item]] += resolved_demand[item]
 
         # Matrix-vector multiplication x = L * d (Instantaneous O(N^2))
         x_vec = self.L @ d_vec
@@ -1213,6 +1232,7 @@ class CurriedEconomySolver:
             gross_production=gross_production,
             internal_consumption=internal_consumption,
             machines=machines,
+            crates=crates or None,
             summary=summary,
         )
 
@@ -1222,8 +1242,22 @@ _SOLVER_INSTANCE: CurriedEconomySolver | None = None
 
 
 def get_economy_solver() -> CurriedEconomySolver:
-    """Retrieve or initialize the curried Foxhole economy solver singleton."""
+    """Retrieve or initialize the curried Foxhole economy solver singleton.
+
+    Uses the synced wiki Production table (`foxhole cargo-sync`) when cached, falling back
+    to the built-in registry otherwise.
+    """
     global _SOLVER_INSTANCE
     if _SOLVER_INSTANCE is None:
-        _SOLVER_INSTANCE = CurriedEconomySolver()
+        from foxhole.cargo import build_registry, load_production
+
+        rows = load_production()
+        registry = build_registry(rows) if rows else None
+        _SOLVER_INSTANCE = CurriedEconomySolver(registry=registry)
     return _SOLVER_INSTANCE
+
+
+def reset_economy_solver() -> None:
+    """Drop the cached solver so the next call reloads (e.g. after a cargo sync)."""
+    global _SOLVER_INSTANCE
+    _SOLVER_INSTANCE = None

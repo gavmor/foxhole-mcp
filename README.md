@@ -133,7 +133,7 @@ Read operations require no authentication. For writing or editing pages with `ed
 
 ### Production Planning Tools
 1. `plan_production(target, quantity, recipe_overrides, recipe_choice)`: Full bill of materials from live wiki recipes. Rolls up a DAG in topological order with integer batch rounding, reports production steps, facility load, and alternative recipes; falls back to the Leontief solve $x = (I - A)^{-1}d$ only when the recipe graph has a feedback loop.
-2. `calculate_required_resources(demand, include_machine_counts, time_window_seconds)`: BOM from the precompiled economy registry.
+2. `calculate_required_resources(demand, include_machine_counts, time_window_seconds, round_to_crates)`: BOM from the precompiled economy registry. After `foxhole cargo-sync`, the registry is built from the wiki's [Cargo](https://foxhole.wiki.gg/wiki/Special:CargoTables) `Production` table (every RecipeRank 1 recipe) instead of the built-in list. `crates` reports whole crates per demanded item; `round_to_crates` solves for those full crates.
 
 ### Prompts
 1. `combat_intel(vehicle_or_weapon: str)`: In-depth combat evaluation, penetration analysis, and counter-tactics.
@@ -191,6 +191,12 @@ uv run foxhole page "Artillery"
 uv run foxhole plan "Silverhand Chieftain - Mk. VI" -q 2
 uv run foxhole plan "Construction Materials" -q 30 --choice '{"Construction Materials": 1}'
 uv run foxhole plan "Dunne Transport" --overrides '{"Basic Materials": {}}'
+
+# --- Resources Solver (Cargo-backed) ---
+# Download the wiki's Production Cargo table once (cached in $FOXHOLE_CARGO_DIR,
+# default ~/.cache/foxhole/cargo); re-run after game updates
+uv run foxhole cargo-sync
+uv run foxhole resources "7.92mm" -q 20 --crates
 ```
 
 ---
