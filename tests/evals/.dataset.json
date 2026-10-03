@@ -1,0 +1,197 @@
+[
+  {
+    "name": "Q1",
+    "input": "How many inventory slots does a Falchion have?",
+    "expected_output": "The Falchion (85K-b “Falchion”) has 3 total inventory slots: 2 general cargo slots and 1 dedicated 40mm ammunition slot.",
+    "context": [
+      "Vehicle: 85K-b “Falchion”",
+      "Cargo slots: 2",
+      "Dedicated ammo slots: 1 (holds up to 45 shells of 40mm)"
+    ],
+    "expected_tools": [{"name": "get_vehicle_stats"}],
+    "additional_metadata": {
+      "id": "Q1",
+      "source": "Heinrich feedback",
+      "category": "vehicle_stats",
+      "note": "2 cargo slots + 1 dedicated ammo slot"
+    }
+  },
+  {
+    "name": "Q2",
+    "input": "How many Components do I need to build 5 Falchions?",
+    "expected_output": "To build 5 Falchions at a Garage, you need 13,500 Components. Each Falchion costs 135 Refined Materials, so 5 Falchions cost 675 Refined Materials. At 20 Components per Refined Material, 675 * 20 = 13,500 Components.",
+    "context": [
+      "Falchion Garage cost: 135 Refined Materials per vehicle",
+      "Refined Material recipe: 20 Components per 1 Refined Material",
+      "Total for 5 vehicles: 5 * 135 = 675 Refined Materials",
+      "Total Components: 675 * 20 = 13,500 Components"
+    ],
+    "expected_tools": [{"name": "get_production_cost"}, {"name": "calculate_required_resources"}],
+    "additional_metadata": {
+      "id": "Q2",
+      "source": "Heinrich feedback (reconstructed)",
+      "category": "production_planning",
+      "status": "reconstructed",
+      "note": "Reconstructed from ground truth 13,500 Components until Heinrich confirms"
+    }
+  },
+  {
+    "name": "Q3",
+    "input": "How many 68mm shells does it take to destroy a Falchion?",
+    "expected_output": "Destroying an 85K-b Falchion (3,650 HP) with 68mm Anti-Tank ammunition (600 base damage per penetrating hit) requires a minimum of 7 penetrating shots (4,200 total damage). In combat conditions, accounting for armor degradation and penetration chance (varying from ~33% at pristine armor up to ~67% when stripped), it typically takes approximately 12 to 16 shells fired (median of ~14 in simulations).",
+    "context": [
+      "Falchion Health: 3,650 HP",
+      "68mm AT Damage: 600 damage per penetrating hit",
+      "Minimum penetrating hits required: ceil(3650 / 600) = 7 hits",
+      "Penetration chance range: 33% minimum to 67% maximum",
+      "Simulated median shots to destroy: ~14 shells"
+    ],
+    "expected_tools": [{"name": "get_vehicle_stats"}, {"name": "get_item_stats"}],
+    "additional_metadata": {
+      "id": "Q3",
+      "source": "Heinrich feedback",
+      "category": "combat_simulation",
+      "note": "Ambiguous/probabilistic: requires stating minimum hits (7) and expected range/assumptions (~12-16, median ~14)"
+    }
+  },
+  {
+    "name": "Q4a",
+    "input": "What is the current war status?",
+    "expected_output": "A live summary of the current World Conquest war status including the war number, whether the war is active or in resistance phase, victory town counts for Wardens and Colonials, and victory requirements.",
+    "context": [
+      "War API live status query providing current war number, winner, conquest status, and victory town scores"
+    ],
+    "expected_tools": [{"name": "get_war_status"}],
+    "additional_metadata": {
+      "id": "Q4a",
+      "source": "Heinrich feedback",
+      "category": "war_api",
+      "dynamic": true,
+      "note": "Live War API values"
+    }
+  },
+  {
+    "name": "Q4b",
+    "input": "What is the HP of a Tier 2 Observation Bunker?",
+    "expected_output": "A Tier 2 Observation Bunker has 1,600 HP.",
+    "context": [
+      "Structure: Observation Bunker (Tier 2)",
+      "Health: 1,600 HP"
+    ],
+    "expected_tools": [{"name": "get_structure_stats"}],
+    "additional_metadata": {
+      "id": "Q4b",
+      "source": "Heinrich feedback",
+      "category": "structure_stats",
+      "note": "Tests Tier 2 naming resolution (Tier 2 Observation Bunker -> Observation Bunker (Tier 2))"
+    }
+  },
+  {
+    "name": "Q5",
+    "input": "How many Refined Materials does a full Mass Production Factory order of Falchions (25 tanks) cost?",
+    "expected_output": "A full Mass Production Factory (MPF) queue of 5 crates of Falchions (yielding 25 tanks total, at 5 tanks per crate) costs 1,416 Refined Materials. The base cost per crate is 405 RMats (3 * 135). Applying the progressive MPF discounts (10%, 20%, 30%, 40%, 50%) gives 364 + 324 + 283 + 243 + 202 = 1,416 Refined Materials.",
+    "context": [
+      "Falchion garage cost: 135 Refined Materials",
+      "MPF base crate cost: 3 * 135 = 405 Refined Materials",
+      "Falchion MPT crate yield: 5 vehicles per crate (5 crates = 25 tanks)",
+      "MPF discount tiers: crate 1: 10% (364.5 -> 364), crate 2: 20% (324), crate 3: 30% (283.5 -> 283), crate 4: 40% (243), crate 5: 50% (202.5 -> 202)",
+      "Total order cost: 364 + 324 + 283 + 243 + 202 = 1,416 Refined Materials"
+    ],
+    "expected_tools": [{"name": "calculate_mpf_cost"}, {"name": "get_production_cost"}],
+    "additional_metadata": {
+      "id": "Q5",
+      "source": "Heinrich feedback (reconstructed)",
+      "category": "mpf_calculation",
+      "status": "reconstructed",
+      "note": "Reconstructed from ground truth 1,416 RMats until Heinrich confirms"
+    }
+  },
+  {
+    "name": "Q6",
+    "input": "How much HP does a Tier 2 bunker have?",
+    "expected_output": "A Tier 2 Bunker has 2,000 HP.",
+    "context": [
+      "Structure: Bunker (Tier 2)",
+      "Health: 2,000 HP"
+    ],
+    "expected_tools": [{"name": "get_structure_stats"}],
+    "additional_metadata": {
+      "id": "Q6",
+      "source": "Heinrich feedback",
+      "category": "structure_stats",
+      "note": "Tests Tier 2 bunker naming resolution (Tier 2 Bunker -> Bunker (Tier 2))"
+    }
+  },
+  {
+    "name": "Q7",
+    "input": "I'm driving a BMS - Ironship full of crates up the river and encountered a closed drawbridge ahead. How do I get past it? Do I need to get out or bring any tools?",
+    "expected_output": "You can open the drawbridge directly from inside the vessel by pressing 'E' while steering the BMS - Ironship close to the bridge. You do NOT need to disembark, swim, climb ladders, or walk onto the bridge. You do NOT need any tools (no wrench, hammer, or materials required). Once opened, sail straight through and do not linger underneath, because vessels idling under bridges begin taking damage after a 120-second grace period.",
+    "context": [
+      "Vessel drivers can press 'E' from helm to open or close drawbridges",
+      "No disembarkation or ladder climbing needed",
+      "No wrench, hammer, or tools required",
+      "Linger damage timer on ships under bridges starts at 120 seconds"
+    ],
+    "expected_tools": [{"name": "get_structure_stats"}, {"name": "get_page_overview"}],
+    "additional_metadata": {
+      "id": "Q7",
+      "source": "eval_failure_report",
+      "category": "naval_navigation",
+      "note": "Agent Eval Failure Report fix - drawbridge interaction mechanics"
+    }
+  },
+  {
+    "name": "Q8",
+    "input": "What raw resources (Salvage and Components) are needed to produce a Niska squad kit (1 Niska Mk. I + 5 Malone Ratcatcher + 40 crates of 12.7mm + 20 Booker Storm Rifle + 30 crates of 7.92mm + 10 Gunner's Breastplate + 20 Gas Mask + 20 Gas Mask Filter + 5 Tripod) using standard rank-1 recipes?",
+    "expected_output": "Producing the Niska squad kit using rank-1 standard recipes requires 1,600 Components and 2,160 Salvage (or 1,500 Components and 1,850 Salvage if optimized across alternative facility recipes).",
+    "context": [
+      "Rank-1 standard recipes bill of materials: 1,600 Components + 2,160 Salvage",
+      "Optimized production bill of materials: 1,500 Components + 1,850 Salvage"
+    ],
+    "expected_tools": [{"name": "calculate_required_resources"}, {"name": "plan_production"}],
+    "additional_metadata": {
+      "id": "Q8",
+      "source": "wiki_cargo_bom",
+      "category": "production_planning",
+      "note": "Hand-verified Leontief BOM from synced Cargo production tables"
+    }
+  },
+  {
+    "name": "Q9",
+    "input": "How much Salvage is required to produce 15 Soldier Supplies in whole crates?",
+    "expected_output": "Soldier Supplies are produced in crates of 10 at a Factory for 160 Salvage per crate. To produce 15 Soldier Supplies in whole crates, you must produce 2 crates (20 shirts total, with 5 surplus), requiring 320 Salvage.",
+    "context": [
+      "Soldier Supplies crate capacity: 10 shirts",
+      "Crate production cost: 160 Salvage",
+      "Target: 15 shirts -> ceil(15 / 10) = 2 crates",
+      "Total Salvage required: 2 * 160 = 320 Salvage"
+    ],
+    "expected_tools": [{"name": "calculate_required_resources"}, {"name": "plan_production"}],
+    "additional_metadata": {
+      "id": "Q9",
+      "source": "wiki_cargo_bom",
+      "category": "production_planning",
+      "note": "Crate-rounding production calculation"
+    }
+  },
+  {
+    "name": "Q10",
+    "input": "How many trips with a BMS - Packmule Flatbed or Dunne Loadlugger (20 resource slots) are needed to haul 6,315 Salvage, 2,100 Components, and 200 Coal?",
+    "expected_output": "Hauling 6,315 Salvage (64 slots), 2,100 Components (21 slots), and 200 Coal (2 slots) totals 87 resource slots (at 100 raw resources per slot). With a 20-slot hauler like the Loadlugger, this requires 5 trips (ceil(87 / 20) = 5).",
+    "context": [
+      "Salvage: 6,315 items = 64 slots (100 per slot)",
+      "Components: 2,100 items = 21 slots",
+      "Coal: 200 items = 2 slots",
+      "Total slots: 87",
+      "Hauler capacity: 20 slots",
+      "Trips needed: ceil(87 / 20) = 5 trips"
+    ],
+    "expected_tools": [{"name": "calculate_hauling_trips"}],
+    "additional_metadata": {
+      "id": "Q10",
+      "source": "wiki_cargo_bom",
+      "category": "logistics_hauling",
+      "note": "Raw resource hauling slot calculation"
+    }
+  }
+]
