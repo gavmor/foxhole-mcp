@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "foxhole-wiki": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/user/Documents/foxhole",
+        "run",
+        "foxhole",
+        "mcp"
+      ],
+      "env": {
+        "FOXHOLE_USER_AGENT": "FoxholeMCP/0.1.0 (+https://github.com/gavmor/foxhole-mcp; game-assistant)"
+      }
+    }
+  }
+}

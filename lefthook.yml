@@ -1,0 +1,32 @@
+# Lefthook Git hooks configuration
+# https://github.com/evilmartians/lefthook
+
+pre-commit:
+  parallel: false
+  commands:
+    ruff-check:
+      glob: "*.py"
+      run: uv run ruff check --fix --force-exclude {staged_files}
+      stage_fixed: true
+    ruff-format:
+      glob: "*.py"
+      run: uv run ruff format --force-exclude {staged_files}
+      stage_fixed: true
+    ty-check:
+      glob: "*.py"
+      run: uv run ty check
+    pytest:
+      glob: "*.py"
+      run: uv run pytest
+
+pre-push:
+  parallel: true
+  commands:
+    ruff-lint:
+      run: uv run ruff check
+    ruff-format:
+      run: uv run ruff format --check
+    ty-typecheck:
+      run: uv run ty check
+    pytest-suite:
+      run: uv run pytest

@@ -1,0 +1,176 @@
+"""MCP tools for Foxhole production planning and Bill of Materials."""
+
+import logging
+from collections.abc import Callable
+from typing import Any
+
+from mcp.server.mcpserver import MCPServer
+
+from foxhole.economy import get_economy_solver
+from foxhole.models import ProductionRecipe
+from foxhole.parser import (
+    parse_item,
+    parse_structure,
+    parse_vehicle,
+)
+from foxhole.planner import plan_production as _plan_production
+from foxhole.telemetry import get_tracer
+from foxhole.tools.base import BaseToolProvider
+from foxhole.tools.wiki import default_wiki_tools
+
+logger = logging.getLogger(__name__)
+tracer = get_tracer("foxhole")
+
+
+async def default_fetch_recipes(name: str) -> tuple[str, list[ProductionRecipe]] | None:
+    """Resolve a name to its wiki title and parsed production recipes."""
+    title = await default_wiki_tools.resolve_title(name)
+    data = await default_wiki_tools.client.get_page_data(title)
+    if not data or not data.get("wikitext"):
+        return None
+    title, wikitext = data["title"], data["wikitext"]
+    for parse in (parse_vehicle, parse_item, parse_structure):
+        parsed = parse(title, wikitext)
+        if parsed and parsed.production:
+            return title, parsed.production
+    return title, []
+
+
+def calculate_required_resources(
+    demand: dict[str, float],
+    include_machine_counts: bool = False,
+    time_window_seconds: float | None = None,
+    round_to_crates: bool = False,
+    inventory: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """Calculate total raw resources, refined materials, intermediate components, and facility counts needed to produce any Foxhole vehicle, weapon, ammunition, or facility good.
+
+    Solves the curried Leontief input-output balance equation x = (I - A)^(-1) d at compile/initialization time.
+    Provides the complete Bill of Materials (BOM) down to primary resources (Salvage, Components, Sulfur, Coal, Crude Oil).
+
+    Use this tool whenever asked:
+    - 'Determine the total resources needed for a bike-mounted machine gun' (00MS "Stinger")
+    - 'What materials do I need to build 5 Spathas or Silverhand Chieftains?'
+    - 'How much scrap and components are needed for 20 crates of 40mm ammo?'
+    - 'Bill of materials for...' or 'Calculate production cost breakdown for...'
+
+    Supports common names and nicknames (e.g. 'bike-mounted machine gun', 'stinger', 'spatha', 'bmats', 'falchion', 'chieftain').
+
+    Args:
+        demand: Desired output goods and quantities {item_name_or_alias: quantity}
+        include_machine_counts: Whether to compute required physical assembly stations/factories
+        time_window_seconds: Time budget in seconds to produce the demand (default: 3600s / 1 hour if machine counts requested)
+        round_to_crates: Round demanded items up to whole crates before solving (factories only
+            produce full crates, e.g. 20 mags of 7.92mm costs a full crate of 30). The `crates`
+            field always reports the whole crates needed.
+        inventory: Units already on hand {item_name: quantity}; only the shortfall is planned
+            and `inventory_used` reports what stock covered. To use a captured stockpile,
+            call `plan_from_stockpile` instead.
+    """
+    try:
+        with tracer.start_as_current_span(
+            "calculate_required_resources.solve",
+            attributes={
+                "foxhole.demand_keys": list(demand.keys()),
+                "foxhole.include_machines": include_machine_counts,
+            },
+        ):
+            solver = get_economy_solver()
+            plan = solver.solve(
+                demand=demand,
+                include_machine_counts=include_machine_counts,
+                time_window_seconds=time_window_seconds,
+                round_to_crates=round_to_crates,
+                inventory=inventory,
+            )
+            return plan.model_dump(exclude_none=True)
+    except ValueError as e:
+        return {"error": str(e)}
+    except Exception as e:
+        logger.exception("Failed to calculate required resources")
+        return {"error": f"Internal error solving production demand: {e}"}
+
+
+class ProductionTools(BaseToolProvider):
+    """Production and bill of materials tool provider."""
+
+    def __init__(self, fetch_fn: Callable = default_fetch_recipes):
+        self.fetch_fn = fetch_fn
+
+    def register(self, server: MCPServer) -> None:
+        """Register production planning and BOM tools with MCPServer."""
+        super().register(server)
+        server.add_tool(calculate_required_resources)
+
+    async def plan_production(
+        self,
+        target: str,
+        quantity: float = 1,
+        recipe_overrides: dict[str, dict[str, float]] | None = None,
+        recipe_choice: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
+        """Compute the full bill of materials to produce any Foxhole vehicle, item, or structure.
+
+        Recursively pulls recipes from foxhole.wiki.gg, rolls up totals down to raw resources
+        (Salvage, Components, Sulfur, Coal, Oil, ...) with integer batch rounding, and reports
+        production steps, facility load, and alternative recipes. Feedback loops (e.g. mines
+        burning fuel refined from their own output) are solved with a Leontief fallback.
+
+        Use for questions like "how many bmats/salvage for 5 Dunnes?" or "full cost of 20 40mm".
+
+        Args:
+            target: Item name or alias (e.g. 'Dunne Transport', '40mm', 'Chieftain')
+            quantity: Number of units to produce (default: 1)
+            recipe_overrides: Replace recipes: {item: {input: qty per 1 output}}. Use {} to treat an
+                item as raw (e.g. {'Basic Materials': {}}), or override a raw resource to model
+                extraction (e.g. {'Salvage': {'Diesel': 0.111}}).
+            recipe_choice: Pick an alternative wiki recipe by index: {item: index}. Indices are
+                listed in the response's alternative_recipes.
+        """
+        import sys
+
+        server_mod = sys.modules.get("foxhole.server")
+        fetch_fn = (
+            getattr(server_mod, "_fetch_recipes", self.fetch_fn) if server_mod else self.fetch_fn
+        )
+        try:
+            with tracer.start_as_current_span(
+                "plan_production.solve",
+                attributes={
+                    "foxhole.target": target,
+                    "foxhole.quantity": quantity,
+                },
+            ):
+                result = await _plan_production(
+                    target,
+                    quantity,
+                    fetch_fn,
+                    recipe_overrides=recipe_overrides,
+                    recipe_choice=recipe_choice,
+                )
+                return result
+        except ValueError as e:
+            return {"error": str(e)}
+
+
+default_production_tools = ProductionTools()
+
+
+async def plan_production(
+    target: str,
+    quantity: float = 1,
+    recipe_overrides: dict[str, dict[str, float]] | None = None,
+    recipe_choice: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    """Module-level convenience wrapper for default_production_tools.plan_production."""
+    return await default_production_tools.plan_production(
+        target=target,
+        quantity=quantity,
+        recipe_overrides=recipe_overrides,
+        recipe_choice=recipe_choice,
+    )
+
+
+def register_production_tools(server: MCPServer) -> None:
+    """Register production planning and BOM tools with MCPServer."""
+    default_production_tools.register(server)
