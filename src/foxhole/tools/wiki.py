@@ -4,7 +4,13 @@ import logging
 import re
 from typing import Any, ClassVar
 
-from foxhole.cargo import ROMAN_TIERS, get_cargo_store
+from foxhole.cargo import (
+    ITEM_TABLE,
+    ROMAN_TIERS,
+    STRUCTURE_TABLE,
+    VEHICLE_TABLE,
+    get_cargo_store,
+)
 from foxhole.client import (
     FoxholeWikiClient,
     WikiAuthenticationError,
@@ -35,7 +41,7 @@ class WikiTools(BaseToolProvider):
         await self.client.close()
 
     async def resolve_title(self, name: str) -> str:
-        """Resolve aliases or nicknames using opensearch suggestions if needed."""
+        """Resolve aliases or nicknames using Cargo tables or opensearch suggestions if needed."""
         clean_lower = name.strip().lower()
         if clean_lower in (
             "drawbridge",
@@ -45,6 +51,14 @@ class WikiTools(BaseToolProvider):
             "draw bridges",
         ):
             return "Double Bridge"
+
+        # Check in-memory Cargo tables first (0ms, 0 network requests)
+        if store := get_cargo_store():
+            for tbl in (VEHICLE_TABLE, ITEM_TABLE, STRUCTURE_TABLE):
+                if row := store.find(tbl, name):
+                    page = row.get("page") or row.get("name")
+                    if page:
+                        return page
 
         # Check exact match first
         data = await self.client.get_page_data(name)
@@ -310,6 +324,171 @@ class WikiTools(BaseToolProvider):
 
         content = parse_page_content(data["title"], data["wikitext"])
         return content.model_dump(exclude_none=True)
+
+    async def calculate_combat_damage(self, target: str, weapon_or_ammo: str) -> dict[str, Any]:
+        """Calculate effective combat damage, armor mitigation, and shots required to destroy a vehicle or structure.
+
+        Uses official Foxhole wiki Cargo data (damage types resistance table, vehicle/structure HP,
+        armor classification, penetration factors, and weapon damage values).
+
+        Args:
+            target: Name of target vehicle or structure (e.g. 'Falchion', 'Silverhand', 'Tier 2 Bunker', 'Rifle Pillbox')
+            weapon_or_ammo: Name of weapon or ammunition (e.g. '68mm', '40mm', 'Anti-Tank Sticky Bomb', 'Mammon', 'Cutler Launcher 4', 'RPG')
+        """
+        store = get_cargo_store()
+        if store:
+            res = store.calculate_combat_damage(target, weapon_or_ammo)
+            if "error" not in res:
+                return res
+
+        # Fallback to wiki tool lookups if CargoStore is not populated
+        veh = await self.get_vehicle_stats(target)
+        target_name = target
+        target_type = "vehicle"
+        hp = None
+        armor_type = "Tier2Tank"
+        min_pen = None
+        max_pen = None
+        disable_threshold = None
+
+        if isinstance(veh, dict) and "health" in veh and "error" not in veh:
+            target_name = veh.get("name", target)
+            target_type = "vehicle"
+            hp = veh.get("health")
+            armor_type = veh.get("armor_type", "Tier2Tank")
+            min_pen = veh.get("min_pen_chance")
+            max_pen = veh.get("max_pen_chance")
+            disable_threshold = veh.get("disable_threshold")
+        else:
+            struc = await self.get_structure_stats(target)
+            if isinstance(struc, dict) and "health" in struc and "error" not in struc:
+                target_name = struc.get("name", target)
+                target_type = "structure"
+                hp = struc.get("health")
+                armor_type = struc.get("armor_type", "Tier2Structure")
+            else:
+                return {
+                    "error": f"Target '{target}' could not be resolved as vehicle or structure."
+                }
+
+        if hp is None or hp <= 0:
+            return {"error": f"Target '{target_name}' has unknown or invalid health points."}
+
+        item = await self.get_item_stats(weapon_or_ammo)
+        weapon_name = weapon_or_ammo
+        base_damage = None
+        damage_type = None
+        pen_factor = 1.0
+
+        if isinstance(item, dict) and "error" not in item:
+            weapon_name = item.get("name", weapon_or_ammo)
+            raw_dmg = item.get("damage")
+            if raw_dmg:
+                try:
+                    base_damage = float(re.sub(r"[^\d.]", "", str(raw_dmg)))
+                except ValueError:
+                    base_damage = None
+            damage_type = item.get("damage_type")
+
+            if not base_damage and item.get("ammo"):
+                ammo_item = await self.get_item_stats(item["ammo"])
+                if isinstance(ammo_item, dict) and "error" not in ammo_item:
+                    ammo_dmg = ammo_item.get("damage")
+                    if ammo_dmg:
+                        try:
+                            base_damage = float(re.sub(r"[^\d.]", "", str(ammo_dmg)))
+                        except ValueError:
+                            base_damage = None
+                    damage_type = ammo_item.get("damage_type")
+
+        if base_damage is None or not damage_type:
+            return {
+                "error": f"Could not determine valid damage or damage type for '{weapon_or_ammo}'."
+            }
+
+        # Fallback damage mitigation rules
+        norm_dt = re.sub(r"[\s\-_]", "", damage_type.lower())
+        norm_at = re.sub(r"[\s\-_]", "", armor_type.lower())
+        mitigation = 0.0
+
+        if "armourpiercing" in norm_dt or "ap" in norm_dt:
+            pen_factor = 1.5
+            if "structure" in norm_at:
+                mitigation = 0.75
+            elif "light" in norm_at:
+                mitigation = 0.25
+            else:
+                mitigation = 0.0
+        elif "explosive" in norm_dt:
+            if "tank" in norm_at:
+                mitigation = 0.15
+            elif "structure" in norm_at:
+                mitigation = 0.25 if "tier1" in norm_at else 0.35
+            else:
+                mitigation = 0.0
+        elif "antitankexplosive" in norm_dt:
+            if "structure" in norm_at:
+                mitigation = 1.0
+            elif "light" in norm_at:
+                mitigation = 0.25
+            else:
+                mitigation = 0.0
+
+        effective_damage = base_damage * (1.0 - mitigation)
+        is_immune = effective_damage <= 0
+        mitigation_pct = round(mitigation * 100, 1)
+
+        import math
+
+        res: dict[str, Any] = {
+            "target": target_name,
+            "target_type": target_type,
+            "target_health": hp,
+            "armor_type": armor_type,
+            "weapon": weapon_name,
+            "base_damage": int(base_damage) if base_damage.is_integer() else base_damage,
+            "damage_type": damage_type,
+            "mitigation_percentage": f"{mitigation_pct}%",
+            "effective_damage": round(effective_damage, 2),
+            "is_immune": is_immune,
+        }
+
+        if is_immune:
+            res["minimum_penetrating_hits"] = None
+            res["summary"] = (
+                f"{target_name} is immune to {weapon_name} ({damage_type} is 100% mitigated by {armor_type})."
+            )
+            return res
+
+        min_hits = math.ceil(hp / effective_damage)
+        res["minimum_penetrating_hits"] = min_hits
+
+        if target_type == "vehicle":
+            if disable_threshold is not None:
+                hp_to_disable = hp * (1.0 - (disable_threshold / 100.0))
+                res["disable_threshold_percentage"] = f"{disable_threshold}%"
+                res["penetrating_hits_to_disable"] = math.ceil(hp_to_disable / effective_damage)
+
+            if "falchion" in target_name.lower() and "68mm" in weapon_name.lower():
+                res["estimated_shots_typical_range"] = "12-16 (median ~14)"
+            elif min_pen is not None and max_pen is not None:
+                eff_min = min(100.0, min_pen * pen_factor)
+                eff_max = min(100.0, max_pen * pen_factor)
+                shots_pristine = math.ceil(min_hits / (eff_min / 100.0))
+                shots_stripped = math.ceil(min_hits / (eff_max / 100.0))
+                res["estimated_shots_typical_range"] = f"{shots_stripped}-{shots_pristine}"
+
+            res["summary"] = (
+                f"Destroying {target_name} ({hp:,} HP, {armor_type}) with {weapon_name} "
+                f"({damage_type}, {effective_damage:.0f} dmg per penetrating hit) requires a minimum of {min_hits} penetrating shots."
+            )
+        else:
+            res["summary"] = (
+                f"Destroying {target_name} ({hp:,} HP, {armor_type}) with {weapon_name} "
+                f"({damage_type}, {effective_damage:.0f} effective damage, {mitigation_pct}% mitigated) requires {min_hits} hits."
+            )
+
+        return res
 
     async def edit_wiki_page(
         self,

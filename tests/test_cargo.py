@@ -136,8 +136,80 @@ ITEMS = [
     },
     {"page": "Old Rifle", "name": "Rifle", "codename": "", "version": "deprecated"},
     {"page": "Rifle", "name": "Rifle", "codename": "RifleW", "faction": "War", "version": ""},
+    {
+        "page": "68mm",
+        "name": "68mm",
+        "codename": "68mmAmmo",
+        "damage": "600",
+        "damage_type": "Armour Piercing",
+        "TankArmourPenetrationFactor": "1.5",
+        "version": "",
+    },
 ]
-VEHICLES = [{"page": "Truck", "name": "Truck", "codename": "TruckW", "vehicle hp": "900"}]
+VEHICLES = [
+    {"page": "Truck", "name": "Truck", "codename": "TruckW", "vehicle hp": "900"},
+    {
+        "page": "Falchion",
+        "name": "85K-b “Falchion”",
+        "codename": "MediumTankC",
+        "vehicle hp": "3650",
+        "armour_type": "Tier2Tank",
+        "min_pen_chance": "33",
+        "max_pen_chance": "67",
+        "disable": "30",
+        "armour_hp": "12725",
+    },
+]
+STRUCTURES = [
+    {
+        "page": "Bunker",
+        "name": "Bunker (Tier 2)",
+        "structure_hp": "1500",
+        "armour_type": "Tier2Structure",
+    }
+]
+DAMAGETYPES = [
+    {
+        "name": "Armour Piercing",
+        "LightVehicle": "0.25",
+        "Tier1Tank": "0",
+        "Tier2Tank": "0",
+        "Tier1Structure": "0.75",
+        "Tier2Structure": "0.75",
+    },
+    {
+        "name": "Explosive",
+        "LightVehicle": "0",
+        "Tier1Tank": "0.15",
+        "Tier2Tank": "0.15",
+        "Tier1Structure": "0.25",
+        "Tier2Structure": "0.35",
+    },
+    {
+        "name": "Poisonous Gas",
+        "Tier2Tank": "1",
+    },
+]
+ARMAMENTS = [
+    {
+        "page": "Truck",
+        "parent_name": "Truck",
+        "ArmamentIndex": "1",
+        "ArmamentName": "Pintle MG",
+        "AmmoName1": "7.92mm",
+        "ReloadTime": "3.5",
+        "RangeMax": "35",
+        "FireRate": "300",
+    }
+]
+VEHICLECLASSES = [
+    {
+        "page": "Truck",
+        "name": "Truck",
+        "armour_type": "LightVehicle",
+        "mobility": "Truck",
+    }
+]
 
 
 def cargo_handler(request):
@@ -145,7 +217,15 @@ def cargo_handler(request):
     if params["action"] == "cargofields":
         return httpx.Response(200, json={"cargofields": {"name": {}, "codename": {}}})
     table = params["tables"]
-    rows = {"Production": ROWS, "itemdata": ITEMS, "vehicles": VEHICLES}.get(table, [])
+    rows = {
+        "Production": ROWS,
+        "itemdata": ITEMS,
+        "vehicles": VEHICLES,
+        "structures": STRUCTURES,
+        "damagetypes": DAMAGETYPES,
+        "armament2": ARMAMENTS,
+        "VehicleClass": VEHICLECLASSES,
+    }.get(table, [])
     return httpx.Response(200, json={"cargoquery": [{"title": r} for r in rows]})
 
 
@@ -157,7 +237,15 @@ async def test_cargo_query_restores_underscores():
 async def test_sync_all_feeds_solver_and_store(tmp_path, monkeypatch):
     monkeypatch.setenv("FOXHOLE_CARGO_DIR", str(tmp_path))
     counts = await sync_all(mock_client(cargo_handler))
-    assert counts == {"Production": len(ROWS), "itemdata": 3, "vehicles": 1, "structures": 0}
+    assert counts == {
+        "Production": len(ROWS),
+        "itemdata": len(ITEMS),
+        "vehicles": len(VEHICLES),
+        "structures": len(STRUCTURES),
+        "damagetypes": len(DAMAGETYPES),
+        "armament2": len(ARMAMENTS),
+        "VehicleClass": len(VEHICLECLASSES),
+    }
     assert json.loads((tmp_path / "production.json").read_text())["table"] == "Production"
     assert load_production() == ROWS
     assert must(load_table("itemdata"))[0]["crate_amount"] == ""
@@ -196,6 +284,67 @@ def test_build_aliases():
     assert build_aliases(ITEMS) == {"filter": "Gas Mask Filter", "filters": "Gas Mask Filter"}
 
 
+def test_store_damage_mitigation():
+    store = CargoStore({"damagetypes": DAMAGETYPES})
+    assert store.damage_mitigation("Armour Piercing", "Tier2Tank") == 0.0
+    assert store.damage_mitigation("ap", "t2 tank") == 0.0
+    assert store.damage_mitigation("Armour Piercing", "Tier1Structure") == 0.75
+    assert store.damage_mitigation("Explosive", "Tier2Tank") == 0.15
+    assert store.damage_mitigation("Poisonous Gas", "Tier2Tank") == 1.0
+
+
+def test_store_calculate_combat_damage():
+    store = CargoStore(
+        {
+            "vehicles": VEHICLES,
+            "itemdata": ITEMS,
+            "structures": STRUCTURES,
+            "damagetypes": DAMAGETYPES,
+            "armament2": ARMAMENTS,
+            "VehicleClass": VEHICLECLASSES,
+        }
+    )
+    # Falchion (3650 HP, Tier2Tank) vs 68mm (600 dmg, AP, pen_factor 1.5)
+    calc = store.calculate_combat_damage("Falchion", "68mm")
+    assert calc["target"] == "85K-b “Falchion”"
+    assert calc["effective_damage"] == 600.0
+    assert calc["mitigation_percentage"] == "0.0%"
+    assert calc["minimum_penetrating_hits"] == 7
+    assert calc["penetrating_hits_to_disable"] == 5
+    assert calc["estimated_shots_typical_range"] == "12-16 (median ~14)"
+    assert not calc["is_immune"]
+
+    # Falchion vs Gas (immune)
+    gas_calc = store.calculate_combat_damage("Falchion", "Gas")
+    # Item 'Gas' not in items list, should return item not found error
+    assert "error" in gas_calc
+
+    # Structure: Bunker (Tier 2) (1500 HP, Tier2Structure) vs 68mm (AP, 75% mitigated -> 150 dmg)
+    bunker_calc = store.calculate_combat_damage("Bunker (Tier 2)", "68mm")
+    assert bunker_calc["effective_damage"] == 150.0
+    assert bunker_calc["mitigation_percentage"] == "75.0%"
+    assert bunker_calc["minimum_penetrating_hits"] == 10
+
+
+def test_store_vehicle_armaments_enrichment():
+    store = CargoStore(
+        {
+            "vehicles": VEHICLES,
+            "armament2": ARMAMENTS,
+            "VehicleClass": VEHICLECLASSES,
+        }
+    )
+    truck = must(store.vehicle("Truck"))
+    assert len(truck.armaments) == 1
+    arm = truck.armaments[0]
+    assert arm.name == "Pintle MG"
+    assert arm.ammo == "7.92mm"
+    assert arm.reload_time == 3.5
+    assert arm.range_max == "35"
+    assert arm.fire_rate == 300.0
+    assert truck.dedicated_ammo_slots == 1
+
+
 class NoNetworkClient(FoxholeWikiClient):
     async def get_page_data(self, *args, **kwargs):
         raise AssertionError("page fetch despite cache hit")
@@ -209,6 +358,10 @@ async def test_tools_answer_from_cache(tmp_path, monkeypatch):
     await sync_all(mock_client(cargo_handler))
     tools = WikiTools(client=NoNetworkClient())
 
+    # In-memory title resolution does zero network calls
+    resolved = await tools.resolve_title("TruckW")
+    assert resolved == "Truck"
+
     cost = await tools.get_production_cost("Gas Mask Filter")
     assert cost["entity_type"] == "item"
     assert cost["crate_amount"] == 20
@@ -217,6 +370,11 @@ async def test_tools_answer_from_cache(tmp_path, monkeypatch):
     truck = await tools.get_vehicle_stats("TruckW")
     assert truck["name"] == "Truck"
     assert truck["health"] == 900
+    assert truck["armaments"][0]["name"] == "Pintle MG"
+
+    # calculate_combat_damage tool
+    dmg = await tools.calculate_combat_damage("Falchion", "68mm")
+    assert dmg["minimum_penetrating_hits"] == 7
 
 
 def test_falls_back_without_cache():

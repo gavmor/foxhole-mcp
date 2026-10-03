@@ -73,6 +73,7 @@ def test_wiki_tools_registration():
         "get_structure_stats",
         "get_production_cost",
         "get_page_overview",
+        "calculate_combat_damage",
         "edit_wiki_page",
     }
     assert registered_names == expected
