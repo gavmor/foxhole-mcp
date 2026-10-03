@@ -38,6 +38,10 @@ PRODUCTION_FIELDS = [
     "Output",
     "OutputType",
     "OutputAmount",
+    "SecondaryOutput",
+    "SecondaryOutputAmount",
+    "TertiaryOutput",
+    "TertiaryOutputAmount",
     "IsCrateOutput",
     "CrateCapacity",
     "ProductionTime",
@@ -227,6 +231,12 @@ def recipe_from_row(row: dict[str, str]) -> ProductionRecipe:
         if name:
             inputs[name] = _int_or_float(amount) if amount is not None else 1
     output_amount = _num(row.get("OutputAmount"))
+    byproducts: dict[str, float] = {}
+    for prefix in ("Secondary", "Tertiary"):
+        bp_name = row.get(f"{prefix}Output", "").strip()
+        bp_amount = _num(row.get(f"{prefix}OutputAmount"))
+        if bp_name and bp_amount:
+            byproducts[bp_name] = bp_amount
     return ProductionRecipe(
         source=row.get("Source", ""),
         category=row.get("ProductionCategory") or None,
@@ -236,6 +246,7 @@ def recipe_from_row(row: dict[str, str]) -> ProductionRecipe:
         output_amount=int(output_amount) if output_amount is not None else None,
         production_time_sec=_num(row.get("ProductionTime")),
         is_mpfable=row.get("IsMPFable") == "1",
+        byproducts=byproducts,
     )
 
 
