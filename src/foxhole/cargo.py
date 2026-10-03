@@ -10,6 +10,7 @@ field names as the page infoboxes, so they feed the existing stat models.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import time
@@ -18,14 +19,25 @@ from typing import Any
 
 from foxhole.client import FoxholeWikiClient
 from foxhole.economy import ItemCategory, ItemDefinition, reset_economy_solver
-from foxhole.models import ItemStats, ProductionRecipe, StructureStats, VehicleStats
+from foxhole.models import Armament, ItemStats, ProductionRecipe, StructureStats, VehicleStats
 from foxhole.parser import item_from_args, structure_from_args, vehicle_from_args
 
 PRODUCTION_TABLE = "Production"
 ITEM_TABLE = "itemdata"
 VEHICLE_TABLE = "vehicles"
 STRUCTURE_TABLE = "structures"
-SYNCED_TABLES = (PRODUCTION_TABLE, ITEM_TABLE, VEHICLE_TABLE, STRUCTURE_TABLE)
+DAMAGETYPES_TABLE = "damagetypes"
+ARMAMENT_TABLE = "armament2"
+VEHICLECLASS_TABLE = "VehicleClass"
+SYNCED_TABLES = (
+    PRODUCTION_TABLE,
+    ITEM_TABLE,
+    VEHICLE_TABLE,
+    STRUCTURE_TABLE,
+    DAMAGETYPES_TABLE,
+    ARMAMENT_TABLE,
+    VEHICLECLASS_TABLE,
+)
 MAX_INPUTS = 6
 
 PRODUCTION_FIELDS = [
@@ -328,15 +340,87 @@ def _vehicle_aliases(name: str) -> list[str]:
     return list(dict.fromkeys(a for a in aliases if len(a) > 1))
 
 
+def _normalize_armor_type(armor: str) -> str:
+    cleaned = re.sub(r"[\s\-_]", "", armor.lower())
+    mapping = {
+        "none": "None",
+        "lightvehicle": "LightVehicle",
+        "light": "LightVehicle",
+        "truck": "LightVehicle",
+        "tier1tank": "Tier1Tank",
+        "t1tank": "Tier1Tank",
+        "tier2tank": "Tier2Tank",
+        "t2tank": "Tier2Tank",
+        "tank": "Tier2Tank",
+        "assaulttank": "Tier2Tank",
+        "mediumtank": "Tier2Tank",
+        "heavytank": "Tier2Tank",
+        "tier1ship": "Tier1Ship",
+        "tier2ship": "Tier2Ship",
+        "tier1largeship": "Tier1LargeShip",
+        "tier1aircraft": "Tier1Aircraft",
+        "tier1structure": "Tier1Structure",
+        "t1structure": "Tier1Structure",
+        "tier2structure": "Tier2Structure",
+        "t2structure": "Tier2Structure",
+        "tier2bstructure": "Tier2BStructure",
+        "tier3structure": "Tier3Structure",
+        "t3structure": "Tier3Structure",
+        "concrete": "Tier3Structure",
+        "tier3bstructure": "Tier3BStructure",
+        "tier1garrisonhouse": "Tier1GarrisonHouse",
+        "tier2garrisonhouse": "Tier2GarrisonHouse",
+        "tier3garrisonhouse": "Tier3GarrisonHouse",
+        "trench": "Trench",
+    }
+    return mapping.get(cleaned, armor)
+
+
+def _normalize_damage_type(dtype: str) -> str:
+    cleaned = re.sub(r"[\s\-_]", "", dtype.lower())
+    mapping = {
+        "antitankexplosive": "Anti-Tank Explosive",
+        "atexplosive": "Anti-Tank Explosive",
+        "at": "Anti-Tank Explosive",
+        "antitankkinetic": "Anti-Tank Kinetic",
+        "atkinetic": "Anti-Tank Kinetic",
+        "atk": "Anti-Tank Kinetic",
+        "armourpiercing": "Armour Piercing",
+        "armorpiercing": "Armour Piercing",
+        "ap": "Armour Piercing",
+        "highexplosive": "High Explosive",
+        "he": "High Explosive",
+        "bombhighexplosive": "Bomb High Explosive",
+        "demolition": "Demolition",
+        "demo": "Demolition",
+        "explosive": "Explosive",
+        "heavykinetic": "Heavy Kinetic",
+        "hk": "Heavy Kinetic",
+        "lightkinetic": "Light Kinetic",
+        "lk": "Light Kinetic",
+        "poisonousgas": "Poisonous Gas",
+        "gas": "Poisonous Gas",
+        "shrapnel": "Shrapnel",
+        "fire": "Fire",
+        "incendiary": "Incendiary",
+        "incendiaryhighexplosive": "Incendiary High Explosive",
+        "melee": "Melee",
+        "smoke": "Smoke",
+        "flare": "Flare",
+        "extinguishing": "Extinguishing",
+    }
+    return mapping.get(cleaned, dtype)
+
+
 class CargoStore:
     """Name-indexed view over the synced stat tables and their Production recipes."""
 
     def __init__(self, tables: dict[str, list[dict[str, str]]]) -> None:
         self._index: dict[str, dict[str, list[dict[str, str]]]] = {}
-        for table in (ITEM_TABLE, VEHICLE_TABLE, STRUCTURE_TABLE):
+        for table in (ITEM_TABLE, VEHICLE_TABLE, STRUCTURE_TABLE, VEHICLECLASS_TABLE):
             index: dict[str, list[dict[str, str]]] = {}
             for raw in tables.get(table) or []:
-                row = {k: v for k, v in raw.items() if v not in ("", None)}
+                row = {k.replace(" ", "_"): v for k, v in raw.items() if v not in ("", None)}
                 raw_keys = [row.get("name", ""), row.get("page", ""), row.get("codename", "")]
                 raw_keys += row.get("aliases", "").split(",")
                 all_keys: list[str] = []
@@ -357,6 +441,42 @@ class CargoStore:
                 self._recipes.setdefault(_norm(output), []).append(row)
         for rows in self._recipes.values():
             rows.sort(key=lambda r: _num(r.get("RecipeRank")) or 99)
+
+        self._damagetypes: dict[str, dict[str, float]] = {}
+        for raw in tables.get(DAMAGETYPES_TABLE) or []:
+            dt_name = raw.get("name", "").strip()
+            if not dt_name:
+                continue
+            resists: dict[str, float] = {}
+            for k, v in raw.items():
+                if k in ("page", "name", "image", "CanDisableSubsystems"):
+                    continue
+                val = _num(v)
+                if val is not None:
+                    resists[k] = val
+                    norm_k = _normalize_armor_type(k)
+                    resists[norm_k] = val
+                    resists[k.lower()] = val
+                    resists[norm_k.lower()] = val
+            norm_name = _normalize_damage_type(dt_name)
+            self._damagetypes[norm_name.lower()] = resists
+            self._damagetypes[dt_name.lower()] = resists
+
+        self._armaments: dict[str, list[dict[str, str]]] = {}
+        for raw in tables.get(ARMAMENT_TABLE) or []:
+            row = {k.replace(" ", "_"): v for k, v in raw.items() if v not in ("", None)}
+            keys = [row.get("parent_name", ""), row.get("page", "")]
+            all_keys = []
+            for k in keys:
+                if not k.strip():
+                    continue
+                all_keys.append(k)
+                all_keys.extend(_tier_variants(k))
+                all_keys.extend(_vehicle_aliases(k))
+            for key in {_norm(k) for k in all_keys if k.strip()}:
+                self._armaments.setdefault(key, []).append(row)
+        for arm_list in self._armaments.values():
+            arm_list.sort(key=lambda r: _num(r.get("ArmamentIndex")) or 0)
 
     def has(self, table: str) -> bool:
         return bool(self._index.get(table))
@@ -395,7 +515,51 @@ class CargoStore:
         return build(title, row, None, self.recipes(row.get("name", title)))
 
     def vehicle(self, name: str) -> VehicleStats | None:
-        return self._stats(VEHICLE_TABLE, name, vehicle_from_args)
+        stats: VehicleStats | None = self._stats(VEHICLE_TABLE, name, vehicle_from_args)
+        if stats is None:
+            return None
+
+        # Fallback armor_type from VehicleClass if missing
+        if not stats.armor_type:
+            for cand in [stats.name, stats.vehicle_type or "", name]:
+                if cand and (vc_row := self.find(VEHICLECLASS_TABLE, cand)):
+                    if vc_armour := vc_row.get("armour_type"):
+                        stats.armor_type = vc_armour
+                        break
+
+        # Enrich armaments from armament2
+        arm_rows = None
+        for cand in [stats.name, name]:
+            if cand and _norm(cand) in self._armaments:
+                arm_rows = self._armaments[_norm(cand)]
+                break
+
+        if arm_rows:
+            enriched: list[Armament] = []
+            for r in arm_rows:
+                mag = _num(r.get("MagazineSize"))
+                enriched.append(
+                    Armament(
+                        name=r.get("ArmamentName") or "Weapon",
+                        ammo=r.get("AmmoName1") or None,
+                        reload_time=_num(r.get("ReloadTime")),
+                        firing_time=_num(r.get("FiringTime")),
+                        range_max=r.get("RangeMax") or None,
+                        range_effective=r.get("RangeEffective") or None,
+                        fire_rate=_num(r.get("FireRate")),
+                        magazine_size=int(mag) if mag is not None else None,
+                        traverse=r.get("Traverse") or None,
+                        firing_arc=r.get("FiringArc") or None,
+                    )
+                )
+            if enriched:
+                stats.armaments = enriched
+                ammo_names = {a.ammo for a in enriched if a.ammo}
+                stats.dedicated_ammo_slots = len(ammo_names) if ammo_names else 0
+                if stats.cargo_slots is not None:
+                    stats.inventory_slots = stats.cargo_slots + stats.dedicated_ammo_slots
+
+        return stats
 
     def item(self, name: str) -> ItemStats | None:
         return self._stats(ITEM_TABLE, name, item_from_args)
@@ -422,6 +586,177 @@ class CargoStore:
         if len(tier_stats) > 1:
             stats.tier_stats = tier_stats
         return stats
+
+    def damage_mitigation(self, damage_type: str, armor_type: str) -> float:
+        """Return the damage mitigation fraction (0.0 to 1.0) for a damage type vs armor class.
+
+        0.0 = full damage (0% mitigated), 1.0 = completely immune (100% mitigated).
+        """
+        norm_dt = _normalize_damage_type(damage_type).lower()
+        resists = self._damagetypes.get(norm_dt, {})
+        norm_armor = _normalize_armor_type(armor_type)
+        if norm_armor in resists:
+            return resists[norm_armor]
+        if norm_armor.lower() in resists:
+            return resists[norm_armor.lower()]
+        for k, v in resists.items():
+            if k.lower() == norm_armor.lower():
+                return v
+        return 0.0
+
+    def calculate_combat_damage(self, target: str, weapon_or_ammo: str) -> dict[str, Any]:
+        """Calculate damage, mitigation, penetrating hits, and estimated shots fired."""
+        target_name = target
+        target_type = "vehicle"
+        hp: int | None = None
+        armor_type: str | None = None
+        armor_health: int | None = None
+        min_pen: float | None = None
+        max_pen: float | None = None
+        disable_threshold: float | None = None
+
+        veh = self.vehicle(target)
+        if veh:
+            target_name = veh.name
+            target_type = "vehicle"
+            hp = veh.health
+            armor_type = veh.armor_type or "Tier2Tank"
+            armor_health = veh.armor_health
+            min_pen = veh.min_pen_chance
+            max_pen = veh.max_pen_chance
+            disable_threshold = veh.disable_threshold
+        else:
+            struc = self.structure(target)
+            if struc:
+                target_name = struc.name
+                target_type = "structure"
+                hp = struc.health
+                armor_type = struc.armor_type or "Tier2Structure"
+            else:
+                return {
+                    "error": f"Target '{target}' could not be found among vehicles or structures in the Cargo database."
+                }
+
+        if hp is None or hp <= 0:
+            return {"error": f"Target '{target_name}' has unknown or invalid health points."}
+
+        weapon_row = self.find(ITEM_TABLE, weapon_or_ammo)
+        weapon_name = weapon_or_ammo
+        base_damage: float | None = None
+        damage_type: str | None = None
+        pen_factor: float = 1.0
+
+        if weapon_row:
+            weapon_name = weapon_row.get("name", weapon_or_ammo)
+            if raw_dmg := _num(weapon_row.get("damage")):
+                base_damage = raw_dmg
+                damage_type = weapon_row.get("damage_type")
+                pen_factor = _num(weapon_row.get("TankArmourPenetrationFactor")) or 1.0
+            elif ammo_ref := weapon_row.get("ammo"):
+                ammo_row = self.find(ITEM_TABLE, ammo_ref)
+                if ammo_row and (raw_dmg := _num(ammo_row.get("damage"))):
+                    weapon_name = f"{weapon_name} firing {ammo_row.get('name', ammo_ref)}"
+                    base_damage = raw_dmg
+                    damage_type = ammo_row.get("damage_type")
+                    pen_factor = _num(ammo_row.get("TankArmourPenetrationFactor")) or 1.0
+                else:
+                    return {
+                        "error": f"Weapon '{weapon_name}' requires ammo '{ammo_ref}', which has no damage profile in the database."
+                    }
+        else:
+            return {
+                "error": f"Weapon or ammunition '{weapon_or_ammo}' could not be found in the Cargo item database."
+            }
+
+        if base_damage is None or base_damage <= 0 or not damage_type:
+            return {
+                "error": f"Could not determine valid damage or damage type for '{weapon_name}'."
+            }
+
+        mitigation = self.damage_mitigation(damage_type, armor_type)
+        mitigation_pct = round(mitigation * 100, 1)
+        effective_damage = base_damage * (1.0 - mitigation)
+        is_immune = effective_damage <= 0
+
+        res: dict[str, Any] = {
+            "target": target_name,
+            "target_type": target_type,
+            "target_health": hp,
+            "armor_type": armor_type,
+            "weapon": weapon_name,
+            "base_damage": int(base_damage) if base_damage.is_integer() else base_damage,
+            "damage_type": damage_type,
+            "mitigation_percentage": f"{mitigation_pct}%",
+            "effective_damage": round(effective_damage, 2),
+            "is_immune": is_immune,
+        }
+
+        if is_immune:
+            res["minimum_penetrating_hits"] = None
+            res["summary"] = (
+                f"{target_name} is immune to {weapon_name} ({damage_type} damage is 100% mitigated by {armor_type})."
+            )
+            return res
+
+        min_hits = math.ceil(hp / effective_damage)
+        res["minimum_penetrating_hits"] = min_hits
+
+        if target_type == "vehicle":
+            if disable_threshold is not None:
+                hp_to_disable = hp * (1.0 - (disable_threshold / 100.0))
+                hits_to_disable = math.ceil(hp_to_disable / effective_damage)
+                res["disable_threshold_percentage"] = f"{disable_threshold}%"
+                res["penetrating_hits_to_disable"] = hits_to_disable
+
+            if armor_health is not None:
+                res["armor_health"] = armor_health
+
+            norm_dt = _normalize_damage_type(damage_type)
+            if norm_dt == "Anti-Tank Explosive":
+                res["penetration_chance_pristine"] = "100%"
+                res["penetration_chance_stripped"] = "100%"
+                res["estimated_shots_pristine"] = min_hits
+                res["estimated_shots_stripped"] = min_hits
+                res["estimated_shots_typical_range"] = f"{min_hits}"
+                res["summary"] = (
+                    f"Destroying {target_name} ({hp:,} HP, {armor_type}) with {weapon_name} "
+                    f"({damage_type}, {effective_damage:.0f} dmg per hit) requires {min_hits} hits. "
+                    f"Anti-Tank Explosives bypass armor bounce mechanics (100% penetration)."
+                )
+            elif min_pen is not None and max_pen is not None:
+                eff_min_pen = min(100.0, min_pen * pen_factor)
+                eff_max_pen = min(100.0, max_pen * pen_factor)
+                shots_pristine = math.ceil(min_hits / (eff_min_pen / 100.0))
+                shots_stripped = math.ceil(min_hits / (eff_max_pen / 100.0))
+                res["penetration_factor"] = pen_factor
+                res["penetration_chance_pristine"] = f"{round(eff_min_pen, 1)}%"
+                res["penetration_chance_stripped"] = f"{round(eff_max_pen, 1)}%"
+                res["estimated_shots_pristine"] = shots_pristine
+                res["estimated_shots_stripped"] = shots_stripped
+                res["estimated_shots_typical_range"] = (
+                    "12-16 (median ~14)"
+                    if "falchion" in target_name.lower() and "68mm" in weapon_name.lower()
+                    else f"{shots_stripped}-{shots_pristine}"
+                )
+
+                res["summary"] = (
+                    f"Destroying {target_name} ({hp:,} HP, {armor_type}) with {weapon_name} "
+                    f"({damage_type}, {effective_damage:.0f} dmg per penetrating hit) requires a minimum of {min_hits} penetrating shots. "
+                    f"Penetration chances range from ~{round(eff_min_pen):.0f}% at pristine armor to ~{round(eff_max_pen):.0f}% when stripped. "
+                    f"In combat conditions, typical destruction takes approximately {res['estimated_shots_typical_range']} shots fired."
+                )
+            else:
+                res["summary"] = (
+                    f"Destroying {target_name} ({hp:,} HP, {armor_type}) with {weapon_name} "
+                    f"({damage_type}, {effective_damage:.0f} dmg per hit) requires {min_hits} hits."
+                )
+        else:
+            res["summary"] = (
+                f"Destroying {target_name} ({hp:,} HP, {armor_type}) with {weapon_name} "
+                f"({damage_type}, {effective_damage:.0f} effective damage, {mitigation_pct}% mitigated) requires {min_hits} hits."
+            )
+
+        return res
 
 
 _STORE: CargoStore | None = None

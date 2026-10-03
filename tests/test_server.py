@@ -22,6 +22,7 @@ async def test_mcp_server_registration():
     assert "get_structure_stats" in tool_names
     assert "get_production_cost" in tool_names
     assert "get_page_overview" in tool_names
+    assert "calculate_combat_damage" in tool_names
     assert "edit_wiki_page" in tool_names
     assert "plan_production" in tool_names
     assert "calculate_required_resources" in tool_names
@@ -240,3 +241,15 @@ async def test_create_server_composite_mcpserver():
     assert isinstance(res, CallToolResult)
     assert not res.is_error
     assert res.structured_content == {"result": 15}
+
+
+@pytest.mark.asyncio
+async def test_calculate_combat_damage_tool():
+    """Verify calculate_combat_damage is callable via the default server instance."""
+    from foxhole.server import calculate_combat_damage
+
+    res = await calculate_combat_damage("Falchion", "68mm")
+    assert "error" not in res
+    assert res["target_type"] == "vehicle"
+    assert res["effective_damage"] == 600.0
+    assert res["minimum_penetrating_hits"] == 7
