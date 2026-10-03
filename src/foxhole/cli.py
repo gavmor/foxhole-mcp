@@ -342,7 +342,8 @@ def run_saves() -> None:
     if not saves:
         print("No Foxhole MapData.sav found (set FOXHOLE_SAVE_PATH to point at one).")
     for s in saves:
-        print(f"{s.modified}  {s.size_bytes:>8} B  {s.path}")
+        when = s.modified_ingame or "(in-game time unknown)"
+        print(f"{when:22}  {s.modified}  {s.size_bytes:>8} B  {s.path}")
 
 
 async def run_cargo_sync() -> None:
