@@ -20,6 +20,7 @@ opened in game.
 from __future__ import annotations
 
 import csv
+import importlib
 import io
 import json
 import math
@@ -249,7 +250,8 @@ def _read_stable(path: Path, attempts: int = 5) -> bytes:
 
 def _raw_from_sav(path: Path) -> list[dict[str, Any]]:
     try:
-        import fs_sav  # type: ignore[import-not-found]
+        # Imported dynamically: fs-sav is an optional extra, so type checkers must not require it
+        fs_sav = importlib.import_module("fs_sav")
     except ImportError as e:
         raise ValueError(
             "Reading .sav files needs the optional fs-sav parser: uv sync --extra stockpiles"
