@@ -167,6 +167,64 @@ Times default to the game's own clock, as shown at the bottom left of the Map Sc
 
 `calculate_required_resources` also takes an `inventory` dict directly. Reading `.sav` files needs the optional Rust parser: `uv sync --extra stockpiles`.
 
+### Game Log Tools
+
+Foxhole writes client-side logs under Steam/Proton at
+`~/.steam/debian-installation/steamapps/compatdata/505460/pfx/drive_c/users/steamuser/AppData/Local/Foxhole/Saved/Logs/`.
+The server discovers them automatically (Steam roots, `libraryfolders.vdf`, Flatpak Steam, Windows `%LOCALAPPDATA%`).
+Set `FOXHOLE_LOG_PATH` to override discovery.
+
+#### What is (and isn't) in the logs
+
+| Recorded | Not recorded |
+| :--- | :--- |
+| Session connections (shard, timestamp) | Kills and deaths |
+| Hex region entries (auth/deploy) | Building and construction |
+| Border crossings (hex travel) | Crafting and production |
+| Deploy (respawn) events | Item pickups |
+| Server queue events | Chat messages |
+
+#### MCP tools
+
+1. `archive_game_logs(dest=None)`: Copy game logs from Steam/Proton into an archive directory
+   (default: `FOXHOLE_LOG_ARCHIVE` env var, then `~/Documents/The 56th/logs`). Idempotent and
+   non-destructive. The live `War.log` and its rotation backup are deduped by the `Log file open`
+   timestamp — only the larger copy is kept. Set `FOXHOLE_LOG_PATH` to override the source.
+
+2. `get_session_timeline(since=None, until=None, archive_dir=None)`: Session timeline from
+   archived logs. Returns sessions with ordered hex region entries, time spent in each region
+   (UTC + in-game "Day N, HHMM Hours" when the clock is calibrated), border crossing counts,
+   and deploy counts. `since`/`until` filter by session start time (ISO 8601 UTC).
+
+#### Log format details
+
+- **Header line** (first line): `Log file open, MM/DD/YY HH:MM:SS` — **local time**.
+- **All other lines**: `[YYYY.MM.DD-HH.MM.SS:mmm][frame]Category: message` — **UTC**.
+- Region server names lack the `Hex` suffix (`SpeakingWoods` → `SpeakingWoodsHex`). Exceptions:
+  `MarbanHollow` and `HomeRegion*` servers keep their names as-is.
+
+#### Privacy
+
+Logs contain your Steam ID (numeric and base64) and IP addresses. These are never printed in
+tool output. The archive copies your own log files as-is; redaction applies only to what the
+tools surface.
+
+#### CLI
+
+```bash
+# Archive logs from Steam/Proton into the default directory
+uv run foxhole logs archive
+
+# Archive into a custom directory
+uv run foxhole logs archive --dest ~/my-logs
+
+# Show session timeline
+uv run foxhole logs timeline
+
+# Filter to a specific time window (UTC)
+uv run foxhole logs timeline --since 2026-09-29T00:00:00Z --until 2026-10-01T00:00:00Z
+```
+
 ### Prompts
 1. `combat_intel(vehicle_or_weapon: str)`: In-depth combat evaluation, penetration analysis, and counter-tactics.
 2. `logistics_plan(item_name: str, requested_amount: int)`: Compute crate counts, material costs, and delivery plans.
@@ -466,6 +524,7 @@ foxhole/
 │       ├── __init__.py    # Package exports
 │       ├── client.py      # Async MediaWiki client with TTL caching & user-agent
 │       ├── economy.py     # Precompiled Curried Leontief solver (A, L = (I-A)^-1)
+│       ├── gamelogs.py    # Game log discovery, archival, parsing, and timeline builder
 │       ├── models.py      # Pydantic data schemas (Vehicle, Item, Structure, Recipe)
 │       ├── parser.py      # wikitextparser template & structure extractor
 │       ├── server.py      # MCP server orchestrator & factory (create_server)
@@ -476,6 +535,7 @@ foxhole/
 │       ├── cli.py         # Command-line interface for Wiki, War API, BOM & planner
 │       ├── tools/         # Modular MCP tool components
 │       │   ├── __init__.py
+│       │   ├── gamelogs.py # Game log MCP tools (GameLogTools)
 │       │   ├── wiki.py    # MediaWiki tools component (WikiTools)
 │       │   ├── warapi.py  # War API telemetry component (WarApiTools)
 │       │   └── production.py # Production planning & BOM tools
