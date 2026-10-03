@@ -19,6 +19,10 @@ dependencies = [
     "wikitextparser>=2.0.0",
 ]
 
+[project.optional-dependencies]
+# Read Foxhole .sav files directly (foxhole-stockpiles' Rust parser)
+stockpiles = ["fs-sav>=0.3.0"]
+
 [project.scripts]
 foxhole = "foxhole.cli:main"
 
@@ -59,3 +63,7 @@ indent-style = "space"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ty.src]
+# Agent git worktrees are full repo copies; don't type-check them as part of this project
+exclude = [".claude"]

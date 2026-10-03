@@ -259,21 +259,90 @@ def run_resources(
     machines: bool = False,
     time_window: float | None = None,
     crates: bool = False,
+    stockpile: str | None = None,
 ) -> None:
     from foxhole.economy import get_economy_solver
+    from foxhole.stockpiles import inventory, read_stockpiles
 
     solver = get_economy_solver()
     try:
+        stock = inventory(read_stockpiles(stockpile)) if stockpile else None
         plan = solver.solve(
             demand={item_or_vehicle: quantity},
             include_machine_counts=machines,
             time_window_seconds=time_window,
             round_to_crates=crates,
+            inventory=stock,
         )
         print(_format_dict(plan.model_dump(exclude_none=True)))
     except ValueError as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+
+def run_stockpile(
+    path: str | None,
+    names: list[str] | None,
+    hex_name: str | None,
+    changes: bool = False,
+    desired: str | None = None,
+    crates: bool = False,
+) -> None:
+    from foxhole.stockpiles import (
+        default_save_path,
+        diff_since_last,
+        inventory,
+        load_quota,
+        quota_diff,
+        read_stockpiles,
+    )
+
+    try:
+        source = path or str(default_save_path())
+        snaps = read_stockpiles(source, names, hex_name)
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    if desired:
+        try:
+            print(_format_dict(quota_diff(load_quota(desired), snaps, crates=crates)))
+        except ValueError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        return
+    print(f"Source: {source}")
+    if changes:
+        diff = diff_since_last(snaps, f"{source}|{hex_name or '*'}|r")
+        if diff["baseline"]:
+            print("Baseline recorded; run again later to see changes.")
+        for c in diff["changes"]:
+            moves = ", ".join(f"{k} {v:+g}" for k, v in c["deltas"].items())
+            print(f"  {c['status']:8} {c['type']} @ {c['hex']} {c['name']}: {moves}")
+        if not diff["baseline"] and not diff["changes"]:
+            print(f"No changes since {diff['previous_read_at']}.")
+        return
+    for snap in snaps:
+        where = f" ({snap.hex})" if snap.hex else ""
+        print(f"\n== {snap.name or 'unnamed'} [{snap.type or '?'}]{where}")
+        for e in snap.entries:
+            label = e.name or f"? {e.code}"
+            qty = f"{e.quantity} crates = {e.units:g}" if e.crated and e.units else f"{e.quantity}"
+            print(f"  {label:40} {qty}")
+        for w in snap.warnings:
+            print(f"  ! {w}")
+    print("\n== Inventory (units)")
+    for name, units in sorted(inventory(snaps).items()):
+        print(f"  {name:40} {units:g}")
+
+
+def run_saves() -> None:
+    from foxhole.stockpiles import find_save_files
+
+    saves = find_save_files()
+    if not saves:
+        print("No Foxhole MapData.sav found (set FOXHOLE_SAVE_PATH to point at one).")
+    for s in saves:
+        print(f"{s.modified}  {s.size_bytes:>8} B  {s.path}")
 
 
 async def run_cargo_sync() -> None:
@@ -445,6 +514,30 @@ def main() -> None:
     res_parser.add_argument(
         "-c", "--crates", action="store_true", help="Round demand up to whole crates"
     )
+    res_parser.add_argument(
+        "-s",
+        "--stockpile",
+        help="foxhole-stockpiles export (JSON/CSV/TSV) or .sav file; plan only the shortfall",
+    )
+
+    stock_parser = subparsers.add_parser(
+        "stockpile", help="Show stockpile contents from a foxhole-stockpiles export or .sav file"
+    )
+    stock_parser.add_argument(
+        "path", nargs="?", help="Export or .sav file (default: newest Foxhole save)"
+    )
+    stock_parser.add_argument(
+        "--changes", action="store_true", help="Show changes since the last --changes read"
+    )
+    stock_parser.add_argument(
+        "--desired", metavar="QUOTA.json", help="Diff against desired levels (JSON quota file)"
+    )
+    stock_parser.add_argument(
+        "--crates", action="store_true", help="Quota and diff in crates rather than units"
+    )
+    subparsers.add_parser("saves", help="List Foxhole save files found on this machine")
+    stock_parser.add_argument("-n", "--name", action="append", help="Only this stockpile (repeat)")
+    stock_parser.add_argument("--hex", help="Only stockpiles in this hex")
 
     subparsers.add_parser(
         "cargo-sync",
@@ -504,7 +597,12 @@ def main() -> None:
             machines=args.machines,
             time_window=args.time,
             crates=args.crates,
+            stockpile=args.stockpile,
         )
+    elif args.command == "stockpile":
+        run_stockpile(args.path, args.name, args.hex, args.changes, args.desired, args.crates)
+    elif args.command == "saves":
+        run_saves()
     elif args.command == "cargo-sync":
         asyncio.run(run_cargo_sync())
     elif args.command == "plan":

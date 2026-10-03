@@ -137,6 +137,19 @@ Read operations require no authentication. For writing or editing pages with `ed
 1. `plan_production(target, quantity, recipe_overrides, recipe_choice)`: Full bill of materials from live wiki recipes. Rolls up a DAG in topological order with integer batch rounding, reports production steps, facility load, and alternative recipes; falls back to the Leontief solve $x = (I - A)^{-1}d$ only when the recipe graph has a feedback loop.
 2. `calculate_required_resources(demand, include_machine_counts, time_window_seconds, round_to_crates)`: BOM from the precompiled economy registry. After `foxhole cargo-sync`, the registry is built from the wiki's [Cargo](https://foxhole.wiki.gg/wiki/Special:CargoTables) `Production` table (every RecipeRank 1 recipe) instead of the built-in list. `crates` reports whole crates per demanded item; `round_to_crates` solves for those full crates.
 
+### Stockpile Tools ([`xurxogr/foxhole-stockpiles`](https://github.com/xurxogr/foxhole-stockpiles))
+[foxhole-stockpiles](https://github.com/xurxogr/foxhole-stockpiles) captures in-game stockpiles by OCR screenshot, the game's *Copy to Clipboard*, or the `.sav` save file, and exports them as JSON/CSV/TSV. Items are keyed by game CodeName, which matches the wiki Cargo `codename`, so contents resolve straight onto wiki names, crate sizes and recipes (run `foxhole cargo-sync` first).
+1. `find_foxhole_saves()`: Foxhole `MapData.sav` files on this machine, newest first. It searches Steam/Proton on Linux (including Flatpak Steam and extra libraries from `libraryfolders.vdf`) and `%LOCALAPPDATA%` on Windows. Set `FOXHOLE_SAVE_PATH` (a file or a folder) to override.
+2. `read_stockpile(path=None, stockpile_names, hex_name, include_reserves)`: Pinned stockpiles in wiki terms, with crated quantities converted to units and a combined `inventory`. With no `path`, it reads the newest save from an in-memory snapshot, retrying if the game writes mid-read. It also accepts foxhole-stockpiles JSON/CSV/TSV exports.
+3. `stockpile_changes(path=None, hex_name, include_reserves)`: What changed since the last call. It reports stockpiles `added` (pinned), `removed` (unpinned) or `changed`, with the units gained or lost per item. The first call records a baseline. State is kept in `~/.cache/foxhole/stockpiles/`.
+4. `plan_from_stockpile(demand, path=None, ...)`: Bill of materials **net of stock**. Finished goods on hand are issued first, then the recipe tree is netted against stocked intermediates and raw materials (stocked Basic Materials cancel their Salvage). Reports `inventory_used` and only the shortfall to produce.
+
+5. `stockpile_quota_diff(desired | quota_file, path=None, hex_name, crates, include_unlisted, ...)`: **Desired vs available** as JSON. For each quota item it returns desired, available, `delta` (available − desired), `status` (`short` / `met` / `surplus`) and whole `crates_short` / `crates_spare`. It also returns `shortfall` and `surplus` maps, plus `counts` and any `unresolved` names. Quota names may be wiki names, aliases or CodeNames, and each line records how its name was resolved. `shortfall` (`shortfall_units` in crate mode) is ready to pass as `demand` to `calculate_required_resources` or `plan_from_stockpile`. A quota file is `{name: qty}` or `{"desired": {name: qty}}`.
+
+> The game records a stockpile's contents in the save only once it is **pinned and has been opened** in game. A freshly pinned stockpile shows 0 items until then.
+
+`calculate_required_resources` also takes an `inventory` dict directly. Reading `.sav` files needs the optional Rust parser: `uv sync --extra stockpiles`.
+
 ### Prompts
 1. `combat_intel(vehicle_or_weapon: str)`: In-depth combat evaluation, penetration analysis, and counter-tactics.
 2. `logistics_plan(item_name: str, requested_amount: int)`: Compute crate counts, material costs, and delivery plans.
@@ -201,6 +214,14 @@ uv run foxhole plan "Dunne Transport" --overrides '{"Basic Materials": {}}'
 # fall back to fetching pages for names it doesn't contain.
 uv run foxhole cargo-sync
 uv run foxhole resources "7.92mm" -q 20 --crates
+
+# --- Stockpiles (foxhole-stockpiles exports or .sav) ---
+uv run foxhole saves                         # where's my save?
+uv run foxhole stockpile --hex SpeakingWoodsHex  # newest save, pinned stockpiles in a hex
+uv run foxhole stockpile --changes           # what changed since the last --changes
+uv run foxhole stockpile --hex SpeakingWoodsHex --desired quota.json   # desired vs available (JSON)
+uv run foxhole stockpile ~/stockpiles/tine.csv   # or a foxhole-stockpiles export
+uv run foxhole resources "Gunner's Breastplate" -q 7 --crates --stockpile ~/stockpiles/tine.csv
 ```
 
 ---

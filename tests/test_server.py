@@ -25,6 +25,8 @@ async def test_mcp_server_registration():
     assert "edit_wiki_page" in tool_names
     assert "plan_production" in tool_names
     assert "calculate_required_resources" in tool_names
+    assert "read_stockpile" in tool_names
+    assert "plan_from_stockpile" in tool_names
     assert "solve_leontief" not in tool_names
 
     prompts = await server.list_prompts()
