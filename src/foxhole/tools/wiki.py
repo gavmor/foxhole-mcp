@@ -1,9 +1,10 @@
 """MCP tools for querying and parsing Foxhole MediaWiki content."""
 
 import logging
+import re
 from typing import Any, ClassVar
 
-from foxhole.cargo import get_cargo_store
+from foxhole.cargo import ROMAN_TIERS, get_cargo_store
 from foxhole.client import (
     FoxholeWikiClient,
     WikiAuthenticationError,
@@ -35,12 +36,30 @@ class WikiTools(BaseToolProvider):
 
     async def resolve_title(self, name: str) -> str:
         """Resolve aliases or nicknames using opensearch suggestions if needed."""
+        clean_lower = name.strip().lower()
+        if clean_lower in (
+            "drawbridge",
+            "drawbridges",
+            "closed drawbridge",
+            "draw bridge",
+            "draw bridges",
+        ):
+            return "Double Bridge"
+
         # Check exact match first
         data = await self.client.get_page_data(name)
         if data and data.get("wikitext"):
             # If it's not a disambiguation page, return as is
             if "{{disambig" not in data["wikitext"].lower():
                 return data["title"]
+
+        # Check if stripped tier name matches a real wiki page (e.g. 'Tier 2 Bunker' -> 'Bunker')
+        tier_clean = re.sub(r"\b(?:tier\s*[1-3]|t[1-3])\b", "", name, flags=re.I).strip(" -:()")
+        if tier_clean and tier_clean.lower() != name.lower():
+            clean_data = await self.client.get_page_data(tier_clean)
+            if clean_data and clean_data.get("wikitext"):
+                if "{{disambig" not in clean_data["wikitext"].lower():
+                    return clean_data["title"]
 
         # Try opensearch for close matches
         suggestions = await self.client.opensearch(name, limit=5)
@@ -142,26 +161,68 @@ class WikiTools(BaseToolProvider):
 
         Extracts structure HP, armor tier, decay resistance, repair costs,
         mounted guns/artillery, and construction/upgrade recipes.
+        For tiered structures (e.g. Bunkers), provides all tier HP values in `tier_stats`
+        and directly supports tiered names (e.g. 'Tier 2 Bunker', 'Observation Bunker (Tier 2)').
 
         Args:
-            structure_name: Name of structure (e.g. 'Storm Cannon', 'Bunker Base', 'Rifle Pillbox')
+            structure_name: Name of structure (e.g. 'Storm Cannon', 'Bunker Base', 'Rifle Pillbox', 'Tier 2 Observation Bunker')
         """
-        if (store := get_cargo_store()) and (cached := store.structure(structure_name)):
-            return cached.model_dump(exclude_none=True)
+        tier_match = re.search(r"\b(?:tier\s*([1-3]|i{1,3})|t([1-3]))\b", structure_name, re.I)
+        store = get_cargo_store()
+        if store and (cached := store.structure(structure_name)):
+            res = cached.model_dump(exclude_none=True)
+            if tier_match and cached.tier_stats:
+                raw_tier = tier_match.group(1) or tier_match.group(2)
+                t_key = f"Tier {ROMAN_TIERS.get(raw_tier.lower(), raw_tier)}"
+                if t_key in cached.tier_stats:
+                    t_info = cached.tier_stats[t_key]
+                    if t_info.get("health"):
+                        res["health"] = t_info["health"]
+                    if t_info.get("name"):
+                        res["name"] = t_info["name"]
+                    if t_info.get("armor_type"):
+                        res["armor_type"] = t_info["armor_type"]
+            return res
+
         resolved = await self.resolve_title(structure_name)
         data = await self.client.get_page_data(resolved)
         if not data or not data.get("wikitext"):
             return {"error": f"Structure '{structure_name}' could not be found on foxhole.wiki.gg."}
 
+        if store:
+            for lookup in (resolved, data.get("title", "")):
+                if lookup and (cached := store.structure(lookup)):
+                    res = cached.model_dump(exclude_none=True)
+                    if tier_match and cached.tier_stats:
+                        raw_tier = tier_match.group(1) or tier_match.group(2)
+                        t_key = f"Tier {ROMAN_TIERS.get(raw_tier.lower(), raw_tier)}"
+                        if t_key in cached.tier_stats:
+                            t_info = cached.tier_stats[t_key]
+                            if t_info.get("health"):
+                                res["health"] = t_info["health"]
+                            if t_info.get("name"):
+                                res["name"] = t_info["name"]
+                            if t_info.get("armor_type"):
+                                res["armor_type"] = t_info["armor_type"]
+                    return res
+
         structure = parse_structure(data["title"], data["wikitext"])
         if not structure:
             content = parse_page_content(data["title"], data["wikitext"])
-            return {
+            res = {
                 "warning": f"'{data['title']}' is not categorized with a Structure Infobox.",
                 "title": content.title,
                 "summary": content.summary,
                 "url": content.wiki_url,
             }
+            if "bridge" in data["title"].lower() or "bridge" in structure_name.lower():
+                res["operational_notes"] = (
+                    "Drawbridges can be raised or lowered by naval vessel drivers directly by pressing 'E' "
+                    "while steering close to the bridge. Drivers do NOT need to disembark, swim, climb ladders, "
+                    "or use walkway switches. No tools (no wrench, hammer, or materials) are required. "
+                    "Ships idling under bridges begin taking damage after a 120-second grace period."
+                )
+            return res
 
         return structure.model_dump(exclude_none=True)
 

@@ -10,6 +10,8 @@ from foxhole.tools.dispatches import (
 from foxhole.tools.optimize import OptimizeTools, default_optimize_tools
 from foxhole.tools.production import (
     ProductionTools,
+    calculate_hauling_trips,
+    calculate_mpf_cost,
     calculate_required_resources,
     default_fetch_recipes,
     default_production_tools,
@@ -65,6 +67,8 @@ __all__ = [
     "StockpileTools",
     "WarApiTools",
     "WikiTools",
+    "calculate_hauling_trips",
+    "calculate_mpf_cost",
     "calculate_required_resources",
     "default_dispatches_tools",
     "default_fetch_recipes",

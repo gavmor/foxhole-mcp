@@ -79,13 +79,13 @@ def test_spatha_facility_bom():
 
     assert plan.resolved_demand == {"Spatha": 1.0}
     assert plan.intermediate_goods["Falchion"] == 1.0
-    assert plan.refined_materials["Refined Materials"] == 165.0
+    assert plan.refined_materials["Refined Materials"] == 135.0
     assert plan.facility_materials["Processed Construction Materials"] == 35.0
     assert plan.facility_materials["Construction Materials"] == 35.0
     assert plan.facility_materials["Assembly Materials IV"] == 15.0
 
-    # Components: 165 Rmats * 20 = 3300 + 35 PCmat * 3 = 105 -> 3405 Components
-    assert plan.raw_resources["Components"] == 3405.0
+    # Components: 135 Rmats * 20 = 2700 + 35 PCmat * 3 = 105 -> 2805 Components
+    assert plan.raw_resources["Components"] == 2805.0
     # Salvage: 35 Cmat * 10 = 350 Salvage
     assert plan.raw_resources["Salvage"] == 350.0
 

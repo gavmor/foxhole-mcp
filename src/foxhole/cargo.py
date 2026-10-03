@@ -250,6 +250,84 @@ def recipe_from_row(row: dict[str, str]) -> ProductionRecipe:
     )
 
 
+ROMAN_TIERS = {"i": "1", "ii": "2", "iii": "3"}
+
+
+def _tier_variants(name: str) -> list[str]:
+    """Generate normalized tier variants for a name.
+
+    Handles:
+    - 'Tier N X', 'Tier <Roman> X', 'TN X' -> 'X (Tier N)'
+    - 'X Tier N', 'X Tier <Roman>', 'X TN' -> 'X (Tier N)'
+    - 'X (Tier N)' -> 'Tier N X', 'X Tier N', 'TN X', 'X TN'
+    """
+    variants = [name]
+    s = name.strip()
+
+    # Pattern 1: Tier N <Name> or TN <Name> or Tier <Roman> <Name> (optionally separated by dash/colon)
+    m1 = re.match(r"^(?:tier\s*([1-3]|i{1,3})|t([1-3]))(?:\s*[-:]\s*|\s+)(.+)$", s, re.IGNORECASE)
+    if m1:
+        tier = m1.group(1) or m1.group(2)
+        tier = ROMAN_TIERS.get(tier.lower(), tier)
+        base = m1.group(3).lstrip(" -:").strip()
+        variants.extend(
+            [f"{base} (Tier {tier})", f"{base} Tier {tier}", f"{base} T{tier}", f"T{tier} {base}"]
+        )
+
+    # Pattern 2: <Name> Tier N or <Name> TN or <Name> Tier <Roman> (optionally separated by dash/colon)
+    m2 = re.match(r"^(.+?)(?:\s*[-:]\s*|\s+)(?:tier\s*([1-3]|i{1,3})|t([1-3]))$", s, re.IGNORECASE)
+    if m2:
+        base = m2.group(1).rstrip(" -:").strip()
+        tier = m2.group(2) or m2.group(3)
+        tier = ROMAN_TIERS.get(tier.lower(), tier)
+        variants.extend(
+            [f"{base} (Tier {tier})", f"Tier {tier} {base}", f"T{tier} {base}", f"{base} T{tier}"]
+        )
+
+    # Pattern 3: <Name> (Tier N)
+    m3 = re.match(r"^(.+?)\s*\(\s*(?:tier\s*([1-3]|i{1,3})|t([1-3]))\s*\)$", s, re.IGNORECASE)
+    if m3:
+        base = m3.group(1).rstrip(" -:").strip()
+        tier = m3.group(2) or m3.group(3)
+        tier = ROMAN_TIERS.get(tier.lower(), tier)
+        variants.extend(
+            [f"Tier {tier} {base}", f"T{tier} {base}", f"{base} Tier {tier}", f"{base} T{tier}"]
+        )
+
+    return list(dict.fromkeys(variants))
+
+
+def _vehicle_aliases(name: str) -> list[str]:
+    """Extract common nicknames and designations for vehicle names."""
+    aliases = [name]
+    quotes = re.findall(r'["\u201c\'\u2018]([^"\u201d\'\u2019]+)["\u201d\'\u2019]', name)
+    aliases.extend(quotes)
+
+    cleaned = re.sub(r"^[A-Z0-9]+[a-z]?[\-_][a-z0-9]+[a-z]?\s+", "", name, flags=re.I)
+    cleaned_no_quotes = re.sub(r'["\u201c\'\u2018\u201d\u2019]', "", cleaned).strip()
+    if cleaned_no_quotes and len(cleaned_no_quotes) > 2:
+        aliases.append(cleaned_no_quotes)
+
+    if " - " in name:
+        parts = [p.strip() for p in name.split(" - ") if p.strip()]
+        aliases.extend(parts)
+        for p in parts:
+            p_no_model = re.sub(r"\s+Mk\.?\s+[IVX0-9]+", "", p, flags=re.I).strip()
+            if p_no_model and len(p_no_model) > 2:
+                aliases.append(p_no_model)
+
+    m_brand = re.match(r"^(Dunne|BMS|Devitt|Gallant|Noble|Silverhand)\s+(.+)$", name, re.I)
+    if m_brand:
+        rest = m_brand.group(2).strip()
+        aliases.append(rest)
+        rest_no_suffix = re.sub(r"\s+[0-9]+[a-z]?$", "", rest, flags=re.I).strip()
+        rest_no_suffix = re.sub(r"\s+Mk\.?\s+[IVX0-9]+$", "", rest_no_suffix, flags=re.I).strip()
+        if rest_no_suffix and len(rest_no_suffix) > 2:
+            aliases.append(rest_no_suffix)
+
+    return list(dict.fromkeys(a for a in aliases if len(a) > 1))
+
+
 class CargoStore:
     """Name-indexed view over the synced stat tables and their Production recipes."""
 
@@ -259,9 +337,17 @@ class CargoStore:
             index: dict[str, list[dict[str, str]]] = {}
             for raw in tables.get(table) or []:
                 row = {k: v for k, v in raw.items() if v not in ("", None)}
-                keys = [row.get("name", ""), row.get("page", ""), row.get("codename", "")]
-                keys += row.get("aliases", "").split(",")
-                for key in {_norm(k) for k in keys if k.strip()}:
+                raw_keys = [row.get("name", ""), row.get("page", ""), row.get("codename", "")]
+                raw_keys += row.get("aliases", "").split(",")
+                all_keys: list[str] = []
+                for k in raw_keys:
+                    if not k.strip():
+                        continue
+                    all_keys.append(k)
+                    all_keys.extend(_tier_variants(k))
+                    if table == VEHICLE_TABLE:
+                        all_keys.extend(_vehicle_aliases(k))
+                for key in {_norm(k) for k in all_keys if k.strip()}:
                     index.setdefault(key, []).append(row)
             self._index[table] = index
 
@@ -277,12 +363,20 @@ class CargoStore:
 
     def find(self, table: str, name: str) -> dict[str, str] | None:
         """Exact (normalised) match on name, page, codename or alias; live rows first."""
-        matches = self._index.get(table, {}).get(_norm(name), [])
-        if not matches:
-            return None
-        exact = [r for r in matches if _norm(r.get("name", "")) == _norm(name)] or matches
-        live = [r for r in exact if r.get("version") not in ("deprecated", "None")]
-        return (live or exact)[0]
+        candidates = [name]
+        candidates.extend(_tier_variants(name))
+        if table == VEHICLE_TABLE:
+            candidates.extend(_vehicle_aliases(name))
+
+        for cand in candidates:
+            matches = self._index.get(table, {}).get(_norm(cand), [])
+            if not matches:
+                continue
+            exact = [r for r in matches if _norm(r.get("name", "")) == _norm(cand)] or matches
+            live = [r for r in exact if r.get("version") not in ("deprecated", "None")]
+            return (live or exact)[0]
+
+        return None
 
     def recipes(self, output: str) -> list[ProductionRecipe]:
         return [recipe_from_row(r) for r in self._recipes.get(_norm(output), [])]
@@ -307,7 +401,27 @@ class CargoStore:
         return self._stats(ITEM_TABLE, name, item_from_args)
 
     def structure(self, name: str) -> StructureStats | None:
-        return self._stats(STRUCTURE_TABLE, name, structure_from_args)
+        stats: StructureStats | None = self._stats(STRUCTURE_TABLE, name, structure_from_args)
+        if stats is None:
+            return None
+        clean_name = re.sub(r"\s*\((?:Tier\s*[1-3]|T[1-3])\)", "", stats.name, flags=re.I).strip()
+        clean_name = re.sub(r"\s+(?:Tier\s*[1-3]|T[1-3])$", "", clean_name, flags=re.I).strip()
+        tier_stats: dict[str, dict[str, Any]] = {}
+        for t_num in ("1", "2", "3"):
+            cand = f"{clean_name} (Tier {t_num})"
+            row = self.find(STRUCTURE_TABLE, cand)
+            if row:
+                hp_val = _num(row.get("structure_hp") or row.get("hp"))
+                rep_val = _num(row.get("repair"))
+                tier_stats[f"Tier {t_num}"] = {
+                    "health": int(hp_val) if hp_val is not None else None,
+                    "armor_type": row.get("armour_type"),
+                    "repair_cost": int(rep_val) if rep_val is not None else None,
+                    "name": row.get("name"),
+                }
+        if len(tier_stats) > 1:
+            stats.tier_stats = tier_stats
+        return stats
 
 
 _STORE: CargoStore | None = None

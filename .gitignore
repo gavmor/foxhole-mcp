@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# DeepEval local artifacts
+.deepeval/
+
+# Agent local worktrees
+.claude/

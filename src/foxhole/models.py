@@ -88,7 +88,17 @@ class VehicleStats(BaseModel):
     )
     crew: int | None = Field(default=None, description="Crew required to operate all primary roles")
     passengers: int | None = Field(default=None, description="Passenger seating capacity")
-    inventory_slots: int | None = Field(default=None, description="Inventory cargo slot count")
+    inventory_slots: int | None = Field(
+        default=None,
+        description="Total inventory slot count (cargo slots + dedicated ammo slots)",
+    )
+    cargo_slots: int | None = Field(default=None, description="General cargo inventory slot count")
+    dedicated_ammo_slots: int | None = Field(
+        default=None, description="Dedicated ammunition slot count"
+    )
+    combat_summary: str | None = Field(
+        default=None, description="Tactical summary of survivability and ammunition to destroy"
+    )
     fuel_capacity: float | None = Field(default=None, description="Fuel tank capacity (liters)")
     fuel_rate: float | None = Field(
         default=None, description="Fuel consumption rate (liters per kilometer)"
@@ -165,6 +175,13 @@ class StructureStats(BaseModel):
     )
     production: list[ProductionRecipe] = Field(
         default_factory=list, description="Construction and upgrade costs"
+    )
+    operational_notes: str | None = Field(
+        default=None, description="Key operational, transit, or interaction mechanics"
+    )
+    tier_stats: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Stats across available tiers for tiered structures (e.g. Tier 1, Tier 2, Tier 3)",
     )
     description: str | None = Field(default=None, description="In-game quote or overview")
     wiki_url: str = Field(description="URL to the Foxhole wiki page")

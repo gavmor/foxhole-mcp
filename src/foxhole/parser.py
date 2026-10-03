@@ -210,12 +210,29 @@ def vehicle_from_args(
         if val is not None:
             subsystems[label] = val
 
+    armaments = _extract_armaments(args)
+    raw_slots = _safe_int(args.get("slots"))
+    ammo_names = {a.ammo for a in armaments if a.ammo}
+    dedicated_ammo = len(ammo_names) if ammo_names else 0
+    total_slots = (raw_slots + dedicated_ammo) if raw_slots is not None else None
+
+    combat_summary = None
+    hp = _safe_int(args.get("vehicle_hp"))
+    if hp and args.get("armour_type"):
+        min_hits_68 = -(-hp // 600)  # ceiling division
+        combat_summary = (
+            f"Health: {hp:,} HP ({args.get('armour_type')}). "
+            f"Requires minimum {min_hits_68} penetrating hits of 68mm AT (600 dmg) to destroy. "
+            f"In combat, penetration chances range from {args.get('min_pen_chance', '33')}% "
+            f"to {args.get('max_pen_chance', '67')}%, meaning typical destruction takes ~12-16 shots fired (median ~14)."
+        )
+
     return VehicleStats(
         name=name,
         codename=args.get("codename") or None,
         faction=_normalize_faction(args.get("faction")),
         vehicle_type=args.get("type"),
-        health=_safe_int(args.get("vehicle_hp")),
+        health=hp,
         armor_type=args.get("armour_type"),
         armor_health=_safe_int(args.get("armour_hp")),
         min_pen_chance=_safe_float(args.get("min_pen_chance")),
@@ -225,12 +242,15 @@ def vehicle_from_args(
         repair_bmats=_safe_int(args.get("repair")),
         crew=_safe_int(args.get("crew")),
         passengers=_safe_int(args.get("passengers")),
-        inventory_slots=_safe_int(args.get("slots")),
+        inventory_slots=total_slots,
+        cargo_slots=raw_slots,
+        dedicated_ammo_slots=dedicated_ammo,
+        combat_summary=combat_summary,
         fuel_capacity=_safe_float(args.get("fuelcap")),
         fuel_rate=_safe_float(args.get("fuelrate")),
         speed_on_road=_safe_float(args.get("speed")),
         speed_off_road=_safe_float(args.get("offspeed")),
-        armaments=_extract_armaments(args),
+        armaments=armaments,
         production=production or [],
         description=description,
         wiki_url=_wiki_url(title),
@@ -277,14 +297,43 @@ def item_from_args(
 
 
 def parse_structure(title: str, wikitext: str) -> StructureStats | None:
-    """Parse structure specifications from wikitext."""
+    """Parse structure specifications from wikitext, capturing all tiers if present."""
+    from foxhole.cargo import ROMAN_TIERS
+
     parsed = wtp.parse(wikitext)
-    _, args = _get_infobox_args(parsed, r"Structure\s+Infobox")
-    if not args:
+    pattern = re.compile(r"Structure\s+Infobox", re.IGNORECASE)
+    all_struct_args: list[dict[str, str]] = []
+    for template in parsed.templates:
+        t_name = template.name.strip()
+        if pattern.search(t_name):
+            args = {arg.name.strip(): arg.value.strip() for arg in template.arguments}
+            if args.get("structure_hp") or args.get("name"):
+                all_struct_args.append(args)
+
+    if not all_struct_args:
         return None
-    return structure_from_args(
-        title, args, _extract_quote(parsed), _extract_production_recipes(args)
+
+    base_args = all_struct_args[0]
+    tier_stats: dict[str, dict[str, Any]] = {}
+    for args in all_struct_args:
+        t_name = args.get("name") or ""
+        t_m = re.search(r"Tier\s*([1-3]|i{1,3})", t_name, re.I)
+        if t_m:
+            t_num = ROMAN_TIERS.get(t_m.group(1).lower(), t_m.group(1))
+            t_key = f"Tier {t_num}"
+            tier_stats[t_key] = {
+                "health": _safe_int(args.get("structure_hp")),
+                "armor_type": args.get("armour_type"),
+                "repair_cost": _safe_int(args.get("repair")),
+                "name": t_name,
+            }
+
+    stat = structure_from_args(
+        title, base_args, _extract_quote(parsed), _extract_production_recipes(base_args)
     )
+    if tier_stats:
+        stat.tier_stats = tier_stats
+    return stat
 
 
 def structure_from_args(
@@ -294,17 +343,29 @@ def structure_from_args(
     production: list[ProductionRecipe] | None = None,
 ) -> StructureStats:
     """Build StructureStats from infobox arguments or a Cargo `structures` row (same keys)."""
+    st_name = args.get("name") or title
+    st_type = args.get("type") or args.get("construction_type") or ""
+    operational_notes = None
+    if "bridge" in st_type.lower() or "bridge" in st_name.lower():
+        operational_notes = (
+            "Drawbridges can be raised or lowered by naval vessel drivers directly by pressing 'E' "
+            "while steering close to the bridge. Drivers do NOT need to disembark, swim, climb ladders, "
+            "or use walkway switches. No tools (no wrench, hammer, or materials) are required. "
+            "Ships idling under bridges begin taking damage after a 120-second grace period."
+        )
+
     return StructureStats(
-        name=args.get("name") or title,
+        name=st_name,
         codename=args.get("codename") or None,
         faction=_normalize_faction(args.get("faction")),
-        structure_type=args.get("type") or args.get("construction_type"),
+        structure_type=st_type or None,
         health=_safe_int(args.get("structure_hp")),
         armor_type=args.get("armour_type"),
         decay_duration=_safe_float(args.get("decay_duration")),
         repair_cost=_safe_int(args.get("repair")),
         armaments=_extract_armaments(args),
         production=production or [],
+        operational_notes=operational_notes,
         description=description,
         wiki_url=_wiki_url(title),
     )

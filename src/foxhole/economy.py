@@ -408,7 +408,7 @@ ECONOMY_REGISTRY: dict[str, ItemDefinition] = {
     "Falchion": ItemDefinition(
         name="Falchion",
         category=ItemCategory.VEHICLE,
-        inputs={"Refined Materials": 165.0},
+        inputs={"Refined Materials": 135.0},
         facility_type="Garage",
         crafting_time_sec=75.0,
         description="Colonial mass-production medium tank (MPF bonus chassis)",
@@ -1049,8 +1049,14 @@ class CurriedEconomySolver:
         if name in self.item_to_idx:
             return name
 
+        # Strip leading quantity or crate prefixes (e.g. '1 Niska Mk. I' -> 'Niska Mk. I', '40 crates of 12.7mm' -> '12.7mm')
+        cleaned = re.sub(r"^\s*\d+\s*(?:crates?\s+of\s+|x\s+)?", "", name, flags=re.I).strip()
+        if cleaned and cleaned in self.item_to_idx:
+            return cleaned
+
         # Lowercase exact match
-        lower_name = name.strip().lower()
+        target_name = cleaned or name
+        lower_name = target_name.strip().lower()
         if lower_name in self.synonyms:
             return self.synonyms[lower_name]
 
@@ -1060,7 +1066,7 @@ class CurriedEconomySolver:
                 return item
 
         # Normalized string search
-        norm_query = self._normalize_string(name)
+        norm_query = self._normalize_string(target_name)
         for syn_k, syn_v in self.synonyms.items():
             if self._normalize_string(syn_k) == norm_query:
                 return syn_v
