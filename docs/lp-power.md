@@ -110,24 +110,25 @@ Water/hr       =  1 × 40 =    40
 
 ## Energy model and assumptions
 
-### Plants burn only for power drawn (Update 1.56)
+### Plants burn only for power drawn (an ASSUMPTION)
 
-Before Update 1.56, power plants ran at full output regardless of demand and any
-surplus was wasted.  Since 1.56, **production scales proportionally to the
-power actually consumed**: a plant producing 5 MW that only needs to supply 3 MW
-runs at 60 % of its rated cycle rate and burns 60 % of its normal fuel.
+What the wiki states (Update 1.56): facilities no longer shut off entirely when power
+demand exceeds supply (unless supply is under 10% of demand); instead **production speed
+scales in proportion to supply / demand**. That is about *consumers* slowing down. The
+wiki does **not** say how much fuel an under-loaded plant burns.
+
+This model **assumes** a plant burns fuel only for the energy actually drawn, so fuel is
+linear in demand. Treat fuel figures as a **minimum**. If plants burn at full rate whenever
+lit, fuel scales with lit plant-time instead, and a plan can need up to about twice as much
+(for example, Order 141/TINE/0002's 15,575 Diesel minimum).
 
 Consequences for the LP model:
 
-1. **`fuel_per_hour` is demand-linear** — it does not depend on plant count.
-   Doubling demand exactly doubles fuel.  This makes fuel a proper LP commodity.
-
-2. **`plants_needed` is a ceiling operation** — you need enough plants that their
-   *capacity* meets demand; excess capacity is idle (zero fuel burn) when demand
-   is lower.
-
-3. **No idle-fuel cost** — a plant running below rated output does not burn fuel
-   for the unused headroom.  Only the fraction actually delivered is charged.
+1. **`fuel_per_hour` is demand-linear**: it does not depend on plant count. This keeps fuel
+   a proper LP commodity.
+2. **`plants_needed` is a ceiling**: enough plants that their *capacity* meets demand.
+3. **No idle-fuel cost is charged** for unused headroom. This is the assumption above;
+   verify in game before relying on fuel totals.
 
 ### What the model does NOT capture
 

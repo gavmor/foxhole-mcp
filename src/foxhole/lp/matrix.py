@@ -113,7 +113,8 @@ def build_recipe_matrix(
                 seconds=seconds,
                 power_mw=power_mw,
                 crate_output=is_crate,
-                crate_size=crate_cap,
+                # Only crate recipes have a crate size (liquids carry CrateCapacity 1 too)
+                crate_size=crate_cap if is_crate else None,
                 extraction=is_extraction,
             )
         )

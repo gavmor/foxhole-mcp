@@ -48,9 +48,10 @@ def plants_needed(mw: float, plant_row: dict[str, str]) -> int:
 def fuel_per_hour(mw: float, plant_row: dict[str, str]) -> dict[str, float]:
     """Fuel items burned per real hour to supply `mw` MW continuously.
 
-    Uses the Update 1.56 proportional model: plants burn fuel only for the power
-    they actually deliver, so total fuel scales linearly with demand regardless of
-    plant count. Fuel per hour = (mw * 3600 / energy_per_run) * fuel_per_run.
+    ASSUMES plants burn fuel only for the energy they deliver (the wiki does not say;
+    Update 1.56 only says consumers slow in proportion when supply falls short), so fuel
+    is linear in demand and this is a minimum. See docs/lp-power.md.
+    Fuel per hour = (mw * 3600 / energy_per_run) * fuel_per_run.
 
     Raises ValueError for non-power-plant rows or rows with zero energy output.
     """
