@@ -42,6 +42,8 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+# Agent tooling, not project code (see [tool.ty.src])
+extend-exclude = [".agents", "skills", ".claude"]
 
 [tool.ruff.lint]
 select = [
@@ -66,5 +68,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.ty.src]
-# Agent git worktrees are full repo copies; don't type-check them as part of this project
-exclude = [".claude"]
+# Agent tooling, not project code: skills installed by `npx skills` (.agents, symlinked into
+# skills/ and .claude/skills) ship third-party templates, and agent git worktrees under
+# .claude are full repo copies
+exclude = [".agents", "skills", ".claude"]
