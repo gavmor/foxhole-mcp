@@ -549,3 +549,20 @@ class TestNameResolution:
 
         out = await tool.optimize_production({"xyzzy_totally_fake_item_zzz": 100})
         assert "error" in out
+
+
+async def test_real_data_excludes_non_gatherable_raw_by_default(monkeypatch, production_rows):
+    """Integration: shirts come from Salvage, not 'raw' Critically Wounded Soldiers."""
+    import foxhole.cargo as cargo
+    from foxhole.tools.optimize import OptimizeTools
+
+    monkeypatch.setattr(cargo, "load_production", lambda *a, **k: production_rows)
+    tools = OptimizeTools()
+    plan = await tools.optimize_production({"Soldier Supplies": 15}, integer=True)
+    assert plan["status"] == "optimal"
+    assert plan["raw_used"] == {"Salvage": 320.0}  # 2 crates x 80 BM x 2 Salvage
+    assert plan["surplus"] == {"Soldier Supplies": 5.0}
+    allowed = await tools.optimize_production(
+        {"Soldier Supplies": 15}, allow_raw=["Critically Wounded Soldier"]
+    )
+    assert "Critically Wounded Soldier" in allowed["raw_used"]

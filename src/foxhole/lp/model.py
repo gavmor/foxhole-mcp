@@ -71,6 +71,11 @@ class RecipeMatrix(BaseModel):
     items: list[str]
     recipes: list[Recipe]
     A: np.ndarray = Field(description="shape (len(items), len(recipes)), float64")
+    extractable: set[str] = Field(
+        default_factory=set,
+        description="Items mines/harvesters yield (always obtainable raw, even if a recipe "
+        "also makes them, e.g. Components by recycling or Sulfur as a byproduct)",
+    )
 
     @property
     def item_index(self) -> dict[str, int]:
@@ -82,9 +87,11 @@ class RecipeMatrix(BaseModel):
 
     @property
     def raw_items(self) -> set[str]:
-        """Items no recipe in the matrix produces (they must come from outside)."""
+        """Items obtainable from outside: those no recipe in the matrix produces, plus
+        anything extractable (mined/harvested), whatever else also produces it."""
         produced = {i for i in range(len(self.items)) if (self.A[i] > 0).any()}
-        return {name for i, name in enumerate(self.items) if i not in produced}
+        unproduced = {name for i, name in enumerate(self.items) if i not in produced}
+        return unproduced | (self.extractable & set(self.items))
 
 
 class Objective(StrEnum):

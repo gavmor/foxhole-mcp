@@ -429,3 +429,14 @@ def test_recipe_power_mw_zero_when_unpowered(monkeypatch, production_rows):
     mat = _matrix_no_power(monkeypatch, production_rows)
     r = _recipe_by_id(mat, "Basic Materials#1@Refinery")
     assert r.power_mw == pytest.approx(0.0)
+
+
+def test_extractable_items_stay_raw_despite_other_producers(production_rows):
+    """Components are mined (Component Mine) but also recycled at a Metalworks; Sulfur is mined
+    but also a Coal Refinery byproduct. Both must remain obtainable raw."""
+    from foxhole.lp.matrix import build_recipe_matrix
+
+    m = build_recipe_matrix(production_rows, include_power=False)
+    assert {"Components", "Sulfur", "Salvage", "Coal"} <= m.raw_items
+    assert any(r.outputs.get("Sulfur", 0) > 0 for r in m.recipes)  # a byproduct recipe exists
+    assert "Basic Materials" not in m.raw_items  # refined goods are never raw

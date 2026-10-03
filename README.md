@@ -137,6 +137,16 @@ Read operations require no authentication. For writing or editing pages with `ed
 1. `plan_production(target, quantity, recipe_overrides, recipe_choice)`: Full bill of materials from live wiki recipes. Rolls up a DAG in topological order with integer batch rounding, reports production steps, facility load, and alternative recipes; falls back to the Leontief solve $x = (I - A)^{-1}d$ only when the recipe graph has a feedback loop.
 2. `calculate_required_resources(demand, include_machine_counts, time_window_seconds, round_to_crates)`: BOM from the precompiled economy registry. After `foxhole cargo-sync`, the registry is built from the wiki's [Cargo](https://foxhole.wiki.gg/wiki/Special:CargoTables) `Production` table (every RecipeRank 1 recipe) instead of the built-in list. `crates` reports whole crates per demanded item; `round_to_crates` solves for those full crates.
 
+### Optimizing Planner (linear programming)
+`optimize_production(targets, objective, mode, max_raw, banned_items, deny_recipes, integer, time_window_seconds, max_facilities, use_stockpile, hex_name, max_trips, allow_raw)` plans over **all** wiki recipes, not just each item's primary one, using `scipy` (HiGHS):
+- **Alternative recipes and byproducts:** 87 outputs have alternatives and 10 recipes have byproducts. It picks the cheapest route, e.g. Gravel from Coal, or from Salvage when Coal is banned or capped.
+- **Objectives:** `min_raw` (optionally weighted), `min_mining_time` (Hammer/Sledge seconds), or `max_throughput` of a target bundle in `rate` mode under raw caps.
+- **Power as a commodity:** facilities draw MW·s, and Diesel Power Plants and other power plants burn fuel to supply it. The fuel figures are minimums; see `docs/lp-power.md`.
+- **`integer=True` (MILP):** whole crates, batches and plant burns, and whole facilities in a time window, with optional `max_facilities` caps.
+- **Raw inputs:** limited to what can be mined or harvested unless listed in `allow_raw`. It can also net against your stockpiles (`use_stockpile`) and cap Loadlugger trips (`max_trips`).
+
+Restricted to rank-1 recipes, it reproduces `calculate_required_resources` exactly. See `docs/lp-planner.md` for worked examples.
+
 ### In-Game Time
 Times default to the game's own clock, as shown at the bottom left of the Map Screen ("Day 27, 0627 Hours"). One in-game day lasts one real hour (wiki: *Day-Night Cycle*). The **day** comes from the War API's `warReport.dayOfWar`. The **clock within the day** comes from a phase calibration: each `dayOfWar` observation bounds it, and a single reading from the game pins it exactly. The calibration is stored per war in `~/.cache/foxhole/ingame_clock.json`, so offline tools (save timestamps, stockpile changes) are labelled too.
 1. `get_ingame_time(shard, at_utc=None)`: Current, or converted, in-game day and clock, with `plus_minus_minutes` uncertainty.

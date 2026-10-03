@@ -32,6 +32,12 @@ def build_recipe_matrix(
 
     recipes: list[Recipe] = []
     seen_ids: set[str] = set()
+    # Mined/harvested outputs stay obtainable raw even when their extraction rows are dropped
+    extractable = {
+        row.get("Output", "").strip()
+        for row in rows
+        if row.get("Source", "").strip() in EXTRACTION_SOURCES and row.get("Output", "").strip()
+    }
 
     for row in rows:
         output = row.get("Output", "").strip()
@@ -135,4 +141,4 @@ def build_recipe_matrix(
         for item, amount in recipe.inputs.items():
             A[item_idx[item], j] -= amount
 
-    return RecipeMatrix(items=items, recipes=recipes, A=A)
+    return RecipeMatrix(items=items, recipes=recipes, A=A, extractable=extractable)

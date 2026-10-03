@@ -77,6 +77,7 @@ class OptimizeTools(BaseToolProvider):
         use_stockpile: bool = False,
         hex_name: str | None = None,
         max_trips: float | None = None,
+        allow_raw: list[str] | None = None,
     ) -> dict[str, Any]:
         """Plan production by linear programming over ALL wiki recipes.
 
@@ -96,6 +97,10 @@ class OptimizeTools(BaseToolProvider):
             use_stockpile: If True, read local stockpile file and net inventory first.
             hex_name: Filter stockpile to this hex (requires use_stockpile=True).
             max_trips: Add a hauling cap: total raw fits in this many truck trips.
+            allow_raw: Extra raw inputs to allow. By default raw intake is limited to what can
+                be mined or harvested (Salvage, Components, Sulfur, Coal, Oil, Water, ...);
+                other unproduced inputs (Critically Wounded Soldier, damaged aircraft parts,
+                Rare Metal, ...) are excluded, and so are recipes that need them.
 
         Returns:
             LPResult fields plus "summary" (human text) and "recipes_chosen" list.
@@ -142,11 +147,16 @@ class OptimizeTools(BaseToolProvider):
             return _error("No targets specified.")
 
         # --- Build Limits ---
+        # Only gatherable resources may enter from outside unless explicitly allowed
+        from foxhole.lp.model import POWER
+
+        non_gatherable = matrix.raw_items - matrix.extractable - set(allow_raw or []) - {POWER}
         limits = Limits(
             max_raw=max_raw or {},
-            banned_items=set(banned_items) if banned_items else set(),
+            banned_items=set(banned_items or []) | non_gatherable,
             denied_recipes=set(deny_recipes) if deny_recipes else set(),
         )
+        notes: list[str] = []
 
         # --- Stockpile inventory ---
         inv: dict[str, float] | None = None
@@ -158,7 +168,7 @@ class OptimizeTools(BaseToolProvider):
                 snaps = read_stockpiles(None, hex_name=hex_name)
                 inv = inv_fn(snaps)
             except Exception as exc:
-                logger.warning("Could not read stockpiles: %s", exc)
+                notes.append(f"Stockpile not used: {exc}")
                 inv = None
 
         # --- Hauling constraint ---
@@ -167,8 +177,6 @@ class OptimizeTools(BaseToolProvider):
                 from foxhole.lp.hauling import trip_constraint
 
                 limits.extra.append(trip_constraint(max_trips))
-            except NotImplementedError:
-                logger.warning("Hauling story not implemented yet; max_trips ignored.")
             except Exception as exc:
                 return _error(f"Failed to build hauling constraint: {exc}")
 
@@ -209,8 +217,6 @@ class OptimizeTools(BaseToolProvider):
                 from foxhole.lp.hauling import trips_needed
 
                 trips = trips_needed(result.raw_used)
-            except NotImplementedError:
-                pass
             except Exception as exc:
                 logger.warning("trips_needed failed: %s", exc)
 
@@ -224,6 +230,21 @@ class OptimizeTools(BaseToolProvider):
         summary = _build_summary(result_dict, mode_enum, obj_enum)
         recipes_chosen = _build_recipes_chosen(result_dict, recipes_by_output)
 
+        if result.status == "infeasible":
+            why = []
+            if banned_items:
+                why.append(f"banned: {', '.join(sorted(banned_items))}")
+            if max_raw:
+                why.append(f"raw caps: {max_raw}")
+            if max_trips is not None:
+                why.append(f"at most {max_trips:g} Loadlugger trips of raw resources")
+            if max_facilities:
+                why.append(f"facility caps: {max_facilities}")
+            why.append(
+                "only mineable/harvestable raw inputs are allowed (add others via allow_raw)"
+            )
+            notes.append("No plan satisfies all constraints. Active: " + "; ".join(why) + ".")
+        result_dict["notes"] = [*result_dict.get("notes", []), *notes]
         out: dict[str, Any] = {**result_dict, "summary": summary, "recipes_chosen": recipes_chosen}
         if trips is not None:
             out["trips_needed"] = trips
