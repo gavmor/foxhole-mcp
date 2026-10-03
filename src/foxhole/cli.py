@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import sys
+from datetime import UTC
 
 from foxhole.client import FoxholeWikiClient
 from foxhole.parser import parse_item, parse_page_content, parse_structure, parse_vehicle
@@ -346,6 +347,71 @@ def run_saves() -> None:
         print(f"{when:22}  {s.modified}  {s.size_bytes:>8} B  {s.path}")
 
 
+def run_logs_archive(dest: str | None) -> None:
+    from foxhole.gamelogs import archive_logs
+
+    result = archive_logs(dest=dest)
+    print(f"Archive: {result['dest']}")
+    if result.get("warning"):
+        print(f"Warning: {result['warning']}")
+        return
+    for name in result["archived"]:
+        print(f"  + {name}")
+    for name in result["skipped_existing"]:
+        print(f"  = {name}  (already archived)")
+    print(
+        f"\n{len(result['archived'])} archived, "
+        f"{len(result['skipped_existing'])} skipped, "
+        f"{result['total_sessions']} total sessions found."
+    )
+
+
+def run_logs_timeline(
+    since: str | None,
+    until: str | None,
+    archive_dir: str | None,
+) -> None:
+    from foxhole.gamelogs import load_sessions
+
+    sessions = load_sessions(archive_dir=archive_dir)
+    # Apply optional time filters (ISO strings passed through load_sessions)
+    # Re-filter here for the CLI; load_sessions accepts datetime objects, so re-parse
+    from datetime import datetime
+
+    since_dt: datetime | None = None
+    until_dt: datetime | None = None
+    if since:
+        since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+        if since_dt.tzinfo is None:
+            since_dt = since_dt.replace(tzinfo=UTC)
+    if until:
+        until_dt = datetime.fromisoformat(until.replace("Z", "+00:00"))
+        if until_dt.tzinfo is None:
+            until_dt = until_dt.replace(tzinfo=UTC)
+
+    sessions = load_sessions(archive_dir=archive_dir, since=since_dt, until=until_dt)
+
+    if not sessions:
+        print("No sessions found. Run `foxhole logs archive` first.")
+        return
+
+    print(
+        "Note: logs do not contain kills, deaths, building, crafting, items, or chat.\n"
+        "Only recorded: hex region entries, border crossings, deploys.\n"
+    )
+    for i, s in enumerate(sessions, 1):
+        when = s.started_ingame or s.started_utc
+        dur = f"{s.duration_seconds / 3600:.1f}h" if s.duration_seconds else "ongoing"
+        print(
+            f"Session {i}  [{when}]  shard={s.shard}  {dur}  "
+            f"({s.crossings} crossings, {s.deploys} deploys)  [{s.source_file}]"
+        )
+        for r in s.regions:
+            label = r.entered_ingame or r.entered_utc
+            rdur = f"{r.duration_seconds / 60:.0f}m" if r.duration_seconds else "—"
+            print(f"  {r.hex:30} {label}  ({rdur})")
+
+
 async def run_cargo_sync() -> None:
     from foxhole.cargo import default_cache_dir, sync_all
 
@@ -540,6 +606,28 @@ def main() -> None:
     stock_parser.add_argument("-n", "--name", action="append", help="Only this stockpile (repeat)")
     stock_parser.add_argument("--hex", help="Only stockpiles in this hex")
 
+    # Game log commands
+    logs_parser = subparsers.add_parser("logs", help="Foxhole game log tools")
+    logs_sub = logs_parser.add_subparsers(dest="logs_command", metavar="COMMAND")
+
+    logs_archive_parser = logs_sub.add_parser(
+        "archive", help="Copy game logs from Steam/Proton into the archive directory"
+    )
+    logs_archive_parser.add_argument(
+        "--dest", help="Archive directory (overrides FOXHOLE_LOG_ARCHIVE)"
+    )
+
+    logs_timeline_parser = logs_sub.add_parser(
+        "timeline", help="Show session timeline from archived game logs"
+    )
+    logs_timeline_parser.add_argument(
+        "--since", metavar="ISO_DATETIME", help="Only sessions starting at or after (UTC)"
+    )
+    logs_timeline_parser.add_argument(
+        "--until", metavar="ISO_DATETIME", help="Only sessions starting before (UTC)"
+    )
+    logs_timeline_parser.add_argument("--archive-dir", help="Log archive directory")
+
     subparsers.add_parser(
         "cargo-sync",
         help="Download the wiki Cargo tables used for stats, recipes and the resources solver",
@@ -604,6 +692,18 @@ def main() -> None:
         run_stockpile(args.path, args.name, args.hex, args.changes, args.desired, args.crates)
     elif args.command == "saves":
         run_saves()
+    elif args.command == "logs":
+        lc = getattr(args, "logs_command", None)
+        if lc == "archive":
+            run_logs_archive(getattr(args, "dest", None))
+        elif lc == "timeline":
+            run_logs_timeline(
+                since=getattr(args, "since", None),
+                until=getattr(args, "until", None),
+                archive_dir=getattr(args, "archive_dir", None),
+            )
+        else:
+            logs_parser.print_help()
     elif args.command == "cargo-sync":
         asyncio.run(run_cargo_sync())
     elif args.command == "plan":

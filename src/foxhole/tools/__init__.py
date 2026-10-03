@@ -7,6 +7,7 @@ from foxhole.tools.dispatches import (
     get_flash_dispatch,
     get_propaganda_wire,
 )
+from foxhole.tools.gamelogs import GameLogTools, default_game_log_tools
 from foxhole.tools.optimize import OptimizeTools, default_optimize_tools
 from foxhole.tools.production import (
     ProductionTools,
@@ -47,6 +48,7 @@ DEFAULT_TOOL_PROVIDERS: tuple[
     ProductionTools,
     StockpileTools,
     OptimizeTools,
+    GameLogTools,
 ] = (
     default_wiki_tools,
     default_war_tools,
@@ -54,12 +56,14 @@ DEFAULT_TOOL_PROVIDERS: tuple[
     default_production_tools,
     default_stockpile_tools,
     default_optimize_tools,
+    default_game_log_tools,
 )
 
 __all__ = [
     "DEFAULT_TOOL_PROVIDERS",
     "BaseToolProvider",
     "DispatchesTools",
+    "GameLogTools",
     "OptimizeTools",
     "ProductionTools",
     "StockpileTools",
@@ -68,6 +72,7 @@ __all__ = [
     "calculate_required_resources",
     "default_dispatches_tools",
     "default_fetch_recipes",
+    "default_game_log_tools",
     "default_optimize_tools",
     "default_production_tools",
     "default_stockpile_tools",

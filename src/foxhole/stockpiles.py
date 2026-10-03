@@ -176,7 +176,7 @@ def _ingame_iso(stamp: Any) -> str | None:
     return _ingame(dt.timestamp())
 
 
-def _steam_libraries() -> list[Path]:
+def steam_libraries() -> list[Path]:
     """Steam roots plus any extra libraries listed in their libraryfolders.vdf."""
     libs: list[Path] = []
     for root in (Path(r).expanduser() for r in STEAM_ROOTS):
@@ -191,6 +191,9 @@ def _steam_libraries() -> list[Path]:
     return libs
 
 
+_steam_libraries = steam_libraries  # backward-compatible alias
+
+
 def find_save_files() -> list[SaveFile]:
     """Foxhole map saves on this machine, newest first.
 
@@ -201,7 +204,7 @@ def find_save_files() -> list[SaveFile]:
         target = Path(override).expanduser()
         candidates += [target] if target.is_file() else list(target.glob("*MapData.sav"))
     else:
-        dirs = [lib / PROTON_SAVE_DIR for lib in _steam_libraries()]
+        dirs = [lib / PROTON_SAVE_DIR for lib in steam_libraries()]
         if local := os.getenv("LOCALAPPDATA"):  # Windows
             dirs.append(Path(local) / "Foxhole" / "Saved" / "SaveGames")
         for d in dirs:
