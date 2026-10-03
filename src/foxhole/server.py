@@ -11,6 +11,7 @@ from foxhole.telemetry import apply_telemetry_mode, setup_telemetry
 from foxhole.tools import (
     DEFAULT_TOOL_PROVIDERS,
     default_dispatches_tools,
+    default_optimize_tools,
     default_production_tools,
     default_stockpile_tools,
     default_war_tools,
@@ -73,8 +74,9 @@ def create_server(
         dispatches = legacy_kwargs.get("dispatches_tools", default_dispatches_tools)
         production = legacy_kwargs.get("production_tools", default_production_tools)
         stockpile = legacy_kwargs.get("stockpile_tools", default_stockpile_tools)
+        optimize = legacy_kwargs.get("optimize_tools", default_optimize_tools)
         prompts = legacy_kwargs.get("prompt_registry", register_prompts)
-        active_extensions = [wiki, war, dispatches, production, stockpile, prompts]
+        active_extensions = [wiki, war, dispatches, production, stockpile, optimize, prompts]
 
     for ext in active_extensions:
         if isinstance(ext, MCPServer):

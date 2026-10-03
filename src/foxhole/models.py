@@ -32,6 +32,10 @@ class ProductionRecipe(BaseModel):
     is_mpfable: bool = Field(
         default=False, description="Whether item can be produced in the Mass Production Factory"
     )
+    byproducts: dict[str, float] = Field(
+        default_factory=dict,
+        description="Secondary and tertiary outputs produced alongside the main output",
+    )
 
 
 class Armament(BaseModel):
