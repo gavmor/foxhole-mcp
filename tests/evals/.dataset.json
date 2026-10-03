@@ -247,5 +247,27 @@
       "failure_mode": "Macro-cardinal bias over topological river corridor reality (inferred entry direction from hex bounding boxes rather than actual river border crossing)",
       "tooling_gap": "Absence of waterway connectivity graph in foxhole MCP tools"
     }
+  },
+  {
+    "name": "Q14",
+    "input": "Check my recent Foxhole play session timeline and make sure the local logs are synchronized from the live game.",
+    "expected_output": "A confirmation that client logs were synchronized and archived from the live game, followed by a structured summary of the player's recent session timeline, active in-game days or timestamps, regions/hexes visited, or current location reconstructed from the archived logs.",
+    "context": [
+      "Log Source: Proton/Steam compatdata directory ('AppData/Local/Foxhole/Saved/Logs').",
+      "MCP Capability: `archive_game_logs` copies and deduplicates active War.log files into the archive directory ('~/Documents/The 56th/logs').",
+      "MCP Capability: `get_session_timeline` parses ordered hex stays, border crossings, and in-game day/hour timestamps.",
+      "Failure Mode: Resorting to raw shell queries instead of utilizing first-class MCP log management tools."
+    ],
+    "expected_tools": [
+      {"name": "archive_game_logs"},
+      {"name": "get_session_timeline"}
+    ],
+    "additional_metadata": {
+      "id": "Q14",
+      "source": "Live session eval / tool neglect report",
+      "category": "tool_use_gamelogs",
+      "failure_mode": "Tool neglect: Bypassing specialized MCP server tools (archive_game_logs / get_session_timeline) in favor of raw shell ad-hoc grepping",
+      "note": "Agent must recognize when local log archives are stale and invoke archive_game_logs followed by get_session_timeline rather than shell inspection."
+    }
   }
 ]
