@@ -58,6 +58,9 @@ def test_build_registry_normalises_per_unit():
     assert reg["Soldier Supplies"].facility_type == "Factory"
     assert reg["Truck"].category == ItemCategory.VEHICLE
     assert reg["Basic Materials"].category == ItemCategory.REFINED_MATERIAL
+    # Liquids have a CrateCapacity on the wiki (jerry-can size) but IsCrateOutput=0;
+    # crate_size must be None so the solver does not report "150 crates of Diesel".
+    assert reg["Diesel"].crate_size is None
 
 
 def test_build_registry_keeps_extraction_outputs_raw():
