@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28.1",
+    "logistics",
     "mcp>=1.0.0",
     "numpy>=2.5.3",
     "opentelemetry-api>=1.45.0",
@@ -32,6 +33,13 @@ foxhole-agent = "foxhole.agent:main"
 requires = ["uv_build>=0.12.2,<0.13.0"]
 build-backend = "uv_build"
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+logistics = { workspace = true }
+traced-harness = { git = "https://github.com/gavmor/traced-harness.git" }
+
 [dependency-groups]
 dev = [
     { include-group = "evals" },
@@ -45,6 +53,7 @@ evals = [
     "deepeval>=4.2.8",
     "dspy>=3.4.0",
     "google-genai>=2.28.0",
+    "traced-harness",
 ]
 
 [tool.ruff]
@@ -73,7 +82,7 @@ indent-style = "space"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests", "packages/logistics/tests"]
 norecursedirs = ["evals"]
 pythonpath = ["."]
 

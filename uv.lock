@@ -7,6 +7,12 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[manifest]
+members = [
+    "foxhole",
+    "logistics",
+]
+
 [[package]]
 name = "agno"
 version = "3.1.1"
@@ -725,6 +731,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
+    { name = "logistics" },
     { name = "mcp" },
     { name = "numpy" },
     { name = "opentelemetry-api" },
@@ -757,12 +764,14 @@ evals = [
     { name = "deepeval" },
     { name = "dspy" },
     { name = "google-genai" },
+    { name = "traced-harness" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fs-sav", marker = "extra == 'stockpiles'", specifier = ">=0.3.0" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "logistics", editable = "packages/logistics" },
     { name = "mcp", specifier = ">=1.0.0" },
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "opentelemetry-api", specifier = ">=1.45.0" },
@@ -791,6 +800,7 @@ evals = [
     { name = "deepeval", specifier = ">=4.2.8" },
     { name = "dspy", specifier = ">=3.4.0" },
     { name = "google-genai", specifier = ">=2.28.0" },
+    { name = "traced-harness", git = "https://github.com/gavmor/traced-harness.git" },
 ]
 
 [[package]]
@@ -1382,6 +1392,23 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/63/6d/c5b5c1fa526d453e807984139ecf5fbe6f640a110569e7d84fbc4e045559/litellm-1.103.2-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:c9c4b32c685ca62d7eaf246c94e4a943c884d1ab56607b408b2c9cdf959b658c", size = 27616993, upload-time = "2026-10-01T06:21:05.156Z" },
     { url = "https://files.pythonhosted.org/packages/cc/e1/2fe0fd0e8668ac6de67dec958524a26878c0ad963676cda2ceeb281e200e/litellm-1.103.2-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:f73617d4d6b6741903f01f003b23c825045276b35a057a72080c816772a90e31", size = 28196360, upload-time = "2026-10-01T06:21:09.427Z" },
     { url = "https://files.pythonhosted.org/packages/fa/c2/ecb4f45b170e9c5271132f6a399c9a3eb934c077ae6c8e2ac35f4d66ffa5/litellm-1.103.2-cp310-abi3-win_amd64.whl", hash = "sha256:0dc3fb3439653e218bca4c905efd5bdb69e61ab4df31dbb0ede05013e1c4c649", size = 28140642, upload-time = "2026-10-01T06:21:13.457Z" },
+]
+
+[[package]]
+name = "logistics"
+version = "0.1.0"
+source = { editable = "packages/logistics" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pydantic" },
+    { name = "scipy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy", specifier = ">=2.5.3" },
+    { name = "pydantic", specifier = ">=2.10.0" },
+    { name = "scipy", specifier = ">=1.14" },
 ]
 
 [[package]]
@@ -3071,6 +3098,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0d/ea/b2a5bd54b28a324dae8211928b2d730b6547500342c7e6c6dea08bd0a485/tqdm-4.70.1.tar.gz", hash = "sha256:cefd0eca11b2a37a3aee776544d4f4ae913f02688135b5556b8788dfa474afc4", size = 171846, upload-time = "2026-09-11T07:25:16.601Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl", hash = "sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73", size = 80199, upload-time = "2026-09-11T07:25:14.599Z" },
+]
+
+[[package]]
+name = "traced-harness"
+version = "0.1.0"
+source = { git = "https://github.com/gavmor/traced-harness.git#fcaf3bdae1eacb0a1074939900c5355dcaf88fba" }
+dependencies = [
+    { name = "agno" },
+    { name = "google-genai" },
+    { name = "mcp" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-sdk" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+    { name = "rich" },
 ]
 
 [[package]]
