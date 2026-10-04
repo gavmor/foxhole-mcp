@@ -10,4 +10,4 @@ while [ -h "$SOURCE" ]; do
 done
 REPO_DIR="$(cd -P "$(dirname "$SOURCE")/.." >/dev/null 2>&1 && pwd)"
 
-exec uv run --directory "$REPO_DIR" --group evals python -m foxhole.agent "$@"
+exec uv run --directory "$REPO_DIR" foxhole-agent "$@"
