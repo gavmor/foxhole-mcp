@@ -6,12 +6,18 @@ import argparse
 import asyncio
 import datetime
 import json
+import sys
 import uuid
 from pathlib import Path
 from typing import Any
 
-from foxhole.telemetry import get_tracer, setup_telemetry
-from tests.evals.harness import AGENT_MODEL_NAME, run_dspy_agent
+# Ensure repository root is on sys.path when run via entry point
+repo_root = Path(__file__).resolve().parent.parent.parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from foxhole.telemetry import get_tracer, setup_telemetry  # noqa: E402
+from tests.evals.harness import AGENT_MODEL_NAME, run_dspy_agent  # noqa: E402
 
 tracer = get_tracer("foxhole.agent.dspy")
 
