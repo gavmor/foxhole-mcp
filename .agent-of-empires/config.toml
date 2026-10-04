@@ -11,8 +11,8 @@
 # on_destroy = ["docker-compose down"]
 
 [session]
-agent_detect_as = { "foxhole-agent" = "claude" }
-custom_agents = { dspy = "uv run foxhole-agent", foxhole = "uv run foxhole-agent", "foxhole-agent" = "uv run foxhole-agent" }
+agent_detect_as = { "traced-agent" = "claude", "traced-dspy" = "claude" }
+custom_agents = { dspy = "traced-agent", "traced-agent" = "traced-agent", "traced-dspy" = "traced-dspy" }
 
 # [sandbox]
 # List fields below replace (not append to) global settings when set:
