@@ -1,0 +1,18 @@
+[project]
+name = "logistics"
+version = "0.1.0"
+description = "Generic logistics algorithms: recipe-matrix LP/MILP production planning and Leontief input-output balancing"
+readme = "README.md"
+authors = [
+    { name = "Gavin Morgan", email = "hello@gavmor.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.5.3",
+    "pydantic>=2.10.0",
+    "scipy>=1.14",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
