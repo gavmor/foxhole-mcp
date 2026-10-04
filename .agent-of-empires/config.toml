@@ -1,0 +1,25 @@
+# Agent of Empires - Repository Configuration
+# This file configures aoe behavior for this repository.
+# See: https://github.com/agent-of-empires/agent-of-empires
+
+# [hooks]
+# Commands run once when a session is first created
+# on_create = ["npm install", "cp .env.example .env"]
+# Commands run every time a session starts
+# on_launch = ["npm install"]
+# Commands run when a session is deleted (before cleanup)
+# on_destroy = ["docker-compose down"]
+
+[session]
+agent_detect_as = { "foxhole-agent" = "claude" }
+custom_agents = { dspy = "foxhole-agent", foxhole = "foxhole-agent", "foxhole-agent" = "foxhole-agent" }
+
+# [sandbox]
+# List fields below replace (not append to) global settings when set:
+# volume_ignores = ["node_modules", ".next"]
+
+# [worktree]
+# auto_cleanup = true
+
+# [updates]
+# update_check_mode = "off"
