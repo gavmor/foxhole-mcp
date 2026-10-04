@@ -3103,7 +3103,7 @@ wheels = [
 [[package]]
 name = "traced-harness"
 version = "0.1.0"
-source = { git = "https://github.com/gavmor/traced-harness.git#2a3062fd8870b13d3527343812d254bfd2425e66" }
+source = { git = "https://github.com/gavmor/traced-harness.git#fcaf3bdae1eacb0a1074939900c5355dcaf88fba" }
 dependencies = [
     { name = "agno" },
     { name = "google-genai" },
