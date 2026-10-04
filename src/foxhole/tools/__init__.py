@@ -31,6 +31,7 @@ from foxhole.tools.warapi import (
 )
 from foxhole.tools.wiki import (
     WikiTools,
+    calculate_combat_damage,
     default_wiki_tools,
     edit_wiki_page,
     get_item_stats,
@@ -71,6 +72,7 @@ __all__ = [
     "StockpileTools",
     "WarApiTools",
     "WikiTools",
+    "calculate_combat_damage",
     "calculate_hauling_trips",
     "calculate_mpf_cost",
     "calculate_required_resources",
