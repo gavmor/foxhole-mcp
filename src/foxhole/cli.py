@@ -633,6 +633,19 @@ def main() -> None:
         help="Download the wiki Cargo tables used for stats, recipes and the resources solver",
     )
 
+    agent_parser = subparsers.add_parser(
+        "agent",
+        help="Run the traced DSPy ReAct agent with OpenTelemetry and DeepEval capture",
+    )
+    agent_parser.add_argument(
+        "prompt", nargs="?", default=None, help="Tactical query for the agent"
+    )
+    agent_parser.add_argument(
+        "-i", "--interactive", action="store_true", help="Interactive REPL mode"
+    )
+    agent_parser.add_argument("-m", "--model", default=None, help="Override agent model name")
+    agent_parser.add_argument("-s", "--session-id", default=None, help="Sortie session ID")
+
     args = parser.parse_args()
     telemetry_enabled = getattr(args, "telemetry", None)
     setup_telemetry(enabled=telemetry_enabled)
@@ -708,6 +721,16 @@ def main() -> None:
         asyncio.run(run_cargo_sync())
     elif args.command == "plan":
         asyncio.run(run_plan(args.target, args.quantity, args.overrides, args.choice))
+    elif args.command == "agent":
+        from foxhole.agent import run_agent_cli
+
+        interactive_mode = args.interactive or (args.prompt is None)
+        kwargs = {}
+        if args.model:
+            kwargs["model_name"] = args.model
+        if args.session_id:
+            kwargs["session_id"] = args.session_id
+        asyncio.run(run_agent_cli(prompt=args.prompt, interactive=interactive_mode, **kwargs))
     else:
         parser.print_help()
         sys.exit(1)

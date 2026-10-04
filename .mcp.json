@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "foxhole": {
+      "command": "uv",
+      "args": ["run", "foxhole", "mcp"]
+    }
+  }
+}
