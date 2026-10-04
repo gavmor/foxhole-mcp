@@ -5,10 +5,11 @@ import time
 import pytest
 from deepeval import assert_test
 from deepeval.dataset import EvaluationDataset, Golden
+from deepeval.metrics import BaseMetric
 from deepeval.test_case import LLMTestCase, ToolCall
 
 from tests.evals.harness import run_agent_sync
-from tests.evals.metrics import EVAL_METRICS
+from tests.evals.metrics import factual_correctness_metric, mcp_use_metric
 
 # Load committed dataset of goldens
 dataset = EvaluationDataset()
@@ -35,7 +36,11 @@ def test_foxhole_mcp_golden(golden: Golden):
         expected_output=golden.expected_output,
         expected_tools=expected_tools,
         tools_called=tools_called,
-        mcp_servers=[mcp_server],
+        mcp_servers=[mcp_server] if golden.expected_tools else None,
     )
 
-    assert_test(test_case=test_case, metrics=EVAL_METRICS)
+    metrics: list[BaseMetric] = [factual_correctness_metric]
+    if golden.expected_tools:
+        metrics.append(mcp_use_metric)
+
+    assert_test(test_case=test_case, metrics=metrics)

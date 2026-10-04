@@ -11,6 +11,8 @@ wheels/
 
 # DeepEval local artifacts
 .deepeval/
+tests/evals/sessions/
 
-# Agent local worktrees
+# Agent local worktrees and session traces
 .claude/
+sessions/

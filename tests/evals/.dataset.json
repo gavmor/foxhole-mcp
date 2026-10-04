@@ -193,5 +193,81 @@
       "category": "logistics_hauling",
       "note": "Raw resource hauling slot calculation"
     }
+  },
+  {
+    "name": "Q11",
+    "input": "I have crates of RPGs in a Seaport stockpile. How do I uncrate them?",
+    "expected_output": "You cannot uncrate items directly at a Seaport or Storage Depot. Seaports and Storage Depots are wholesale logistics facilities that only store and dispense crated goods, and do not offer an option to uncrate items directly from their stockpile. To uncrate the RPGs, retrieve the crates into your inventory or a vehicle, transport and submit them to a Base stockpile (Town Hall, Relic Base, or Bunker Base). Once submitted to a Base, items can be retrieved individually.",
+    "context": [
+      "Facility: Seaport / Storage Depot",
+      "Rule: Seaports and Storage Depots do not allow uncrating or unpacking items from stockpiles; there is no 'Retrieve as Item' menu action.",
+      "Unpack procedure: Crates must be submitted to a Base (Town Hall, Relic Base, Bunker Base) stockpile to be converted into individual items."
+    ],
+    "expected_tools": [],
+    "additional_metadata": {
+      "id": "Q11",
+      "source": "Live sortie field report / agent hallucination incident",
+      "category": "logistics_mechanics",
+      "failure_mode": "Hallucination of non-existent UI context menu ('Retrieve as Item' at Seaport)",
+      "note": "Disallowing Seaport uncrating is a core Foxhole logistics constraint. Agent erroneously conflated Base stockpile item retrieval with Seaport crate operations."
+    }
+  },
+  {
+    "name": "Q12",
+    "input": "If I am boating from The Scrying Belt (Nevish Line) through Callum's Cape towards Stem (Speaking Woods), is Tine a good halfway stopping point?",
+    "expected_output": "No. Tine is located further east in Speaking Woods than Stem. When navigating from Nevish Line through Callum's Cape into Speaking Woods, the river corridor curves and enters Speaking Woods from the south, reaching Stem first. Tine (and its seaport) lies deeper into Speaking Woods to the east/northeast, past Stem. Therefore, Tine is not an intermediate stop on the way to Stem—it is further downriver.",
+    "context": [
+      "World Conquest Map: Nevish Line (West), Callum's Cape (Middle), Speaking Woods (East).",
+      "Speaking Woods Hex Layout: River waterway enters Speaking Woods from the south, reaching Stem first; Tine is located further east/northeast.",
+      "Route sequence from West: The Scrying Belt -> Callum's Cape (Callum's Keep) -> Stem -> Tine."
+    ],
+    "expected_tools": [],
+    "additional_metadata": {
+      "id": "Q12",
+      "source": "Live sortie navigation feedback / spatial hallucination incident",
+      "category": "geography_navigation",
+      "failure_mode": "Inverted spatial sequence / waypoint hallucination (suggested destination past target as intermediate stop)",
+      "note": "Agent failed to account for intra-hex relative positioning along the Callum's Cape -> Speaking Woods river corridor, placing Tine before Stem instead of past it."
+    }
+  },
+  {
+    "name": "Q13",
+    "input": "From which direction does the navigable waterway enter Speaking Woods when traveling from the Callum's Cape water network?",
+    "expected_output": "The waterway enters Speaking Woods from the south. Although Callum's Cape as a whole hex sits to the west of Speaking Woods on the World Conquest map, the river channel meanders south before crossing into the southern border of Speaking Woods.",
+    "context": [
+      "World Conquest Map Geography: Callum's Cape & Speaking Woods border.",
+      "Hydrology / Waterway Topology: The navigable river corridor curves south and crosses into Speaking Woods through its southern boundary rather than directly across the western land border.",
+      "Tooling Requirement: Justifies development of a topological river/waterway graph tool (e.g., get_naval_route or get_waterway_topology) to prevent cardinal direction inference errors."
+    ],
+    "expected_tools": [],
+    "additional_metadata": {
+      "id": "Q13",
+      "source": "Live sortie field report / hydrology topological hallucination",
+      "category": "geography_hydrology_topology",
+      "failure_mode": "Macro-cardinal bias over topological river corridor reality (inferred entry direction from hex bounding boxes rather than actual river border crossing)",
+      "tooling_gap": "Absence of waterway connectivity graph in foxhole MCP tools"
+    }
+  },
+  {
+    "name": "Q14",
+    "input": "Check my recent Foxhole play session timeline and make sure the local logs are synchronized from the live game.",
+    "expected_output": "A confirmation that client logs were synchronized and archived from the live game, followed by a structured summary of the player's recent session timeline, active in-game days or timestamps, regions/hexes visited, or current location reconstructed from the archived logs.",
+    "context": [
+      "Log Source: Proton/Steam compatdata directory ('AppData/Local/Foxhole/Saved/Logs').",
+      "MCP Capability: `archive_game_logs` copies and deduplicates active War.log files into the archive directory ('~/Documents/The 56th/logs').",
+      "MCP Capability: `get_session_timeline` parses ordered hex stays, border crossings, and in-game day/hour timestamps.",
+      "Failure Mode: Resorting to raw shell queries instead of utilizing first-class MCP log management tools."
+    ],
+    "expected_tools": [
+      {"name": "archive_game_logs"},
+      {"name": "get_session_timeline"}
+    ],
+    "additional_metadata": {
+      "id": "Q14",
+      "source": "Live session eval / tool neglect report",
+      "category": "tool_use_gamelogs",
+      "failure_mode": "Tool neglect: Bypassing specialized MCP server tools (archive_game_logs / get_session_timeline) in favor of raw shell ad-hoc grepping",
+      "note": "Agent must recognize when local log archives are stale and invoke archive_game_logs followed by get_session_timeline rather than shell inspection."
+    }
   }
 ]
