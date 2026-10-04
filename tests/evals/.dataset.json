@@ -211,5 +211,23 @@
       "failure_mode": "Hallucination of non-existent UI context menu ('Retrieve as Item' at Seaport)",
       "note": "Disallowing Seaport uncrating is a core Foxhole logistics constraint. Agent erroneously conflated Base stockpile item retrieval with Seaport crate operations."
     }
+  },
+  {
+    "name": "Q12",
+    "input": "If I am boating from The Scrying Belt (Nevish Line) through Callum's Cape towards Stem (Speaking Woods), is Tine a good halfway stopping point?",
+    "expected_output": "No. Tine is located further east in Speaking Woods than Stem. When navigating eastward from Nevish Line through Callum's Cape into Speaking Woods, you enter from the west and encounter Stem first. Tine (and its seaport) lies deeper into Speaking Woods to the east/northeast, past Stem. Therefore, Tine is not an intermediate stop on the way to Stem—it is further downriver.",
+    "context": [
+      "World Conquest Map: Nevish Line (West), Callum's Cape (Middle), Speaking Woods (East).",
+      "Speaking Woods Hex Layout: Western water entry leads first towards Stem/Stem river approaches; Tine is located further east/northeast.",
+      "Route sequence from West: The Scrying Belt -> Callum's Cape (Callum's Keep) -> Stem -> Tine."
+    ],
+    "expected_tools": [],
+    "additional_metadata": {
+      "id": "Q12",
+      "source": "Live sortie navigation feedback / spatial hallucination incident",
+      "category": "geography_navigation",
+      "failure_mode": "Inverted spatial sequence / waypoint hallucination (suggested destination past target as intermediate stop)",
+      "note": "Agent failed to account for intra-hex relative positioning along the Callum's Cape -> Speaking Woods river corridor, placing Tine before Stem instead of past it."
+    }
   }
 ]
