@@ -102,6 +102,32 @@ def test_live_the_56th_trace_evaluation_if_exists():
     assert tool.input_parameters.get("map_name") == "BlackcoatHex"
 
 
+def test_fresh_the_56th_trace_58776d7ae841_evaluation_if_exists():
+    """Evaluate fresh failure case session trace (58776d7ae841) from The 56th if present."""
+    trace_path = Path("/home/user/Documents/The 56th/sessions/trace_58776d7ae841.jsonl")
+    if not trace_path.exists():
+        trace_path = Path("tests/evals/sessions/trace_58776d7ae841.jsonl")
+    if not trace_path.exists():
+        pytest.skip("Fresh session trace not found on disk")
+
+    report = evaluate_trace(trace_path)
+    assert report.total_turns == 2
+    assert len(report.failed_tool_calls) == 1
+
+    # Ensure peripheral failure is captured as sub-location parameter hallucination
+    turn_idx, tool = report.failed_tool_calls[0]
+    assert turn_idx == 1
+    assert tool.name == "get_map_intel"
+    assert tool.input_parameters.get("map_name") == "SouredFieldsHex"
+    assert "Could not retrieve map telemetry for 'SouredFieldsHex'" in (tool.error_message or "")
+
+    # DeepEval test case conversion
+    test_cases = to_deepeval_test_cases(trace_path)
+    assert len(test_cases) == 2
+    assert "Strider" in test_cases[0].input
+    assert "Soured Fields" in test_cases[1].input
+
+
 def test_first_failure_cascade_pruning(tmp_path: Path):
     """Verify first-failure stopping behavior from 'Evals for AI Engineers' (Ch. 3 & 8)."""
     trace_file = tmp_path / "cascading_trace.jsonl"
