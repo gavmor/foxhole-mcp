@@ -16,3 +16,4 @@ tests/evals/sessions/
 # Agent local worktrees and session traces
 .claude/
 sessions/
+app_data.json

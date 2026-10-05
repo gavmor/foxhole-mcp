@@ -269,5 +269,25 @@
       "failure_mode": "Tool neglect: Bypassing specialized MCP server tools (archive_game_logs / get_session_timeline) in favor of raw shell ad-hoc grepping",
       "note": "Agent must recognize when local log archives are stale and invoke archive_game_logs followed by get_session_timeline rather than shell inspection."
     }
+  },
+  {
+    "name": "Q15",
+    "input": "While bringing a bargeful of .44 ammo crates down from Reprieve by way of Lochan Berth, I came across an idle, unmanned Strider off the coast of Soured Fields; there's no base or settlement here, and it's at the edge of the hex, so I figure it'd come unmoored and drifted here. I plan to take it down to Ulster Falls to warehouse it, then get a ride back north to pick up my supplies and continue to the front.",
+    "expected_output": "This plan should not be executed because it is based on several misunderstandings of game mechanics and geography. First, vehicles and watercraft in Foxhole never drift or come unmoored on their own—it was parked or abandoned by another player. Second, you cannot warehouse a Strider at Ulster Falls because Ulster Falls does not have a Seaport; gunships can only be stored in Seaports (the nearest Seaport along your route was back at Lochan Berth in Callahan's Passage). Third, leaving your barge full of crated .44 ammunition unattended in open water off Soured Fields puts valuable logistics at severe risk of decay, partisan interception, or friendly looting. You should prioritize delivering your barge cargo to its destination rather than abandoning it for an empty gunship.",
+    "context": [
+      "Vehicle Mechanics: Watercraft and vehicles in Foxhole do not move or drift with water currents when unmanned; they remain stationary where left.",
+      "Ship Storing Rules: Gunships (like the Strider) are unpackageable and can only be stored in a Seaport, never a Storage Depot, Town Hall, or Relic Base.",
+      "Geography & Seaports: Ulster Falls is in The Linn of Mercy and lacks a Seaport. The nearest Seaport along that river corridor is at Lochan Berth in Callahan's Passage (CallahansPassageHex, where Soured Fields is located).",
+      "Logistics Operational Security: Abandoning a loaded logistics barge in open contested waters risks loss to rapid decay or enemy partisans."
+    ],
+    "expected_tools": [],
+    "additional_metadata": {
+      "id": "Q15",
+      "source": "Live sortie field report / session trace 58776d7ae841",
+      "category": "logistics_naval_operations",
+      "failure_mode": "Compounded validation failure: validating player misconceptions regarding vehicle drifting, abandoning loaded logistics barges, and attempting to store a gunship in a town lacking a Seaport",
+      "tooling_incident": "Peripheral tool error when querying get_map_intel with sub-location 'SouredFieldsHex' instead of parent hex 'CallahansPassageHex'"
+    }
   }
 ]
+
